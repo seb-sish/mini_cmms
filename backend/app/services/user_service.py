@@ -1,12 +1,12 @@
-import uuid
 from typing import Optional
-from sqlalchemy import func, select, update
+import uuid
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import hash_password
 from app.db.models.user import User, UserRole, UserStatus
 from app.errors.exceptions import AppException
-from app.schemas.user import PasswordUpdate, StatusUpdate, UserCreate, UserUpdate
+from app.schemas.user import PasswordUpdate, StatusUpdate, UserCreate, UserPatch, UserUpdate
 from app.services.auth_service import AuthService
 
 class UserService:
@@ -16,37 +16,28 @@ class UserService:
 
     async def list_users(
         self,
-        limit: int = 20,
-        offset: int = 0,
         role: Optional[UserRole] = None,
         status: Optional[UserStatus] = None,
-        q: Optional[str] = None,
+        limit: int = 20,
+        offset: int = 0,
     ) -> tuple[list[User], int]:
-        stmt = select(User)
-        count_stmt = select(func.count(User.id))
+        query = select(User)
+        count_query = select(func.count(User.id))
 
         if role is not None:
-            stmt = stmt.where(User.role == role)
-            count_stmt = count_stmt.where(User.role == role)
+            query = query.where(User.role == role)
+            count_query = count_query.where(User.role == role)
         if status is not None:
-            stmt = stmt.where(User.status == status)
-            count_stmt = count_stmt.where(User.status == status)
-        if q is not None and q.strip():
-            term = f"%{q.strip().lower()}%"
-            filter_q = func.lower(User.login).like(term) | func.lower(User.full_name).like(term)
-            stmt = stmt.where(filter_q)
-            count_stmt = count_stmt.where(filter_q)
+            query = query.where(User.status == status)
+            count_query = count_query.where(User.status == status)
 
-        # Ordering per spec Q17/Design Notes: login ASC, id ASC
-        stmt = stmt.order_by(User.login.asc(), User.id.asc()).offset(offset).limit(limit)
+        total = (await self.session.execute(count_query)).scalar_one()
 
-        total_res = await self.session.execute(count_stmt)
-        total = total_res.scalar_one()
+        query = query.order_by(User.created_at.desc(), User.id.desc()).limit(limit).offset(offset)
+        result = await self.session.execute(query)
+        users = list(result.scalars().all())
 
-        items_res = await self.session.execute(stmt)
-        items = list(items_res.scalars().all())
-
-        return items, total
+        return users, total
 
     async def get_user_by_id(self, user_id: uuid.UUID) -> User:
         stmt = select(User).where(User.id == user_id)
@@ -78,7 +69,7 @@ class UserService:
         user = User(
             login=payload.login.strip(),
             password_hash=hash_password(payload.password),
-            full_name=payload.full_name.strip(),
+            full_name=payload.full_name.strip() if payload.full_name else None,
             role=payload.role,
             status=UserStatus.ACTIVE,
         )
@@ -87,7 +78,7 @@ class UserService:
         await self.session.refresh(user)
         return user
 
-    async def update_user(self, user_id: uuid.UUID, expected_version: int, payload: UserUpdate) -> User:
+    async def update_user(self, user_id: uuid.UUID, expected_version: int, payload: UserPatch) -> User:
         user = await self.get_user_by_id(user_id)
         if user.version != expected_version:
             raise AppException(
@@ -98,7 +89,74 @@ class UserService:
             )
 
         has_changes = False
-        if payload.full_name is not None and payload.full_name.strip() != user.full_name:
+
+        # 1. Role update & check active assignments if technician
+        if payload.role is not None and payload.role != user.role:
+            if user.role == UserRole.TECHNICIAN and payload.role != UserRole.TECHNICIAN:
+                from app.db.models.work_order import WorkOrder, WorkOrderStatus
+                active_statuses = [WorkOrderStatus.ASSIGNED, WorkOrderStatus.IN_PROGRESS]
+                stmt = select(func.count(WorkOrder.id)).where(
+                    WorkOrder.assignee_id == user.id,
+                    WorkOrder.status.in_(active_statuses),
+                )
+                active_count = (await self.session.execute(stmt)).scalar() or 0
+                if active_count > 0:
+                    raise AppException(
+                        status=409,
+                        code="ACTIVE_ASSIGNMENTS",
+                        title="Conflict",
+                        detail="Cannot change role: technician has active work orders assigned.",
+                    )
+
+            if user.role == UserRole.ADMIN and payload.role != UserRole.ADMIN and user.status == UserStatus.ACTIVE:
+                count_stmt = select(func.count(User.id)).where(
+                    User.role == UserRole.ADMIN,
+                    User.status == UserStatus.ACTIVE,
+                    User.id != user_id,
+                )
+                other_active_admins = (await self.session.execute(count_stmt)).scalar_one()
+                if other_active_admins == 0:
+                    raise AppException(
+                        status=409,
+                        code="LAST_ACTIVE_ADMIN",
+                        title="Conflict",
+                        detail="Cannot block or demote the last active administrator.",
+                    )
+
+            user.role = payload.role
+            has_changes = True
+
+        # 2. Status update & check last active admin
+        if payload.status is not None and payload.status != user.status:
+            if user.role == UserRole.ADMIN and user.status == UserStatus.ACTIVE and payload.status == UserStatus.BLOCKED:
+                count_stmt = select(func.count(User.id)).where(
+                    User.role == UserRole.ADMIN,
+                    User.status == UserStatus.ACTIVE,
+                    User.id != user_id,
+                )
+                other_active_admins = (await self.session.execute(count_stmt)).scalar_one()
+                if other_active_admins == 0:
+                    raise AppException(
+                        status=409,
+                        code="LAST_ACTIVE_ADMIN",
+                        title="Conflict",
+                        detail="Cannot block or demote the last active administrator.",
+                    )
+
+            user.status = payload.status
+            has_changes = True
+            if payload.status == UserStatus.BLOCKED and self.auth_service:
+                await self.auth_service.revoke_all_user_sessions(user_id)
+
+        # 3. New password update
+        if payload.new_password is not None:
+            user.password_hash = hash_password(payload.new_password)
+            has_changes = True
+            if self.auth_service:
+                await self.auth_service.revoke_all_user_sessions(user_id)
+
+        # 4. Optional full name update
+        if payload.full_name is not None and payload.full_name.strip() != (user.full_name or ""):
             user.full_name = payload.full_name.strip()
             has_changes = True
 

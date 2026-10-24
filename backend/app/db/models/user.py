@@ -1,4 +1,5 @@
 from enum import StrEnum
+from typing import Optional
 from sqlalchemy import Index, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base, TimestampMixin, UUIDPrimaryKeyMixin, VersionMixin
@@ -18,7 +19,7 @@ class User(Base, UUIDPrimaryKeyMixin, TimestampMixin, VersionMixin):
 
     login: Mapped[str] = mapped_column(String(50), nullable=False)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
-    full_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    full_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True, default=None)
     role: Mapped[str] = mapped_column(String(20), default=UserRole.OPERATOR, nullable=False)
     status: Mapped[str] = mapped_column(String(20), default=UserStatus.ACTIVE, nullable=False)
 

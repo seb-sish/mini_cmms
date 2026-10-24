@@ -1,6 +1,6 @@
 from typing import Annotated, Optional
 import uuid
-from fastapi import APIRouter, Depends, Header, Query, Response, status
+from fastapi import APIRouter, Depends, Header, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 import redis.asyncio as aioredis
 
@@ -8,7 +8,7 @@ from app.api.dependencies import get_current_user, get_redis, parse_if_match_ver
 from app.db.models.user import User, UserRole, UserStatus
 from app.db.session import get_session
 from app.schemas.common import PaginatedResponse
-from app.schemas.user import PasswordUpdate, StatusUpdate, UserCreate, UserRead, UserUpdate
+from app.schemas.user import PasswordUpdate, StatusUpdate, UserCreate, UserPatch, UserRead, UserUpdate
 from app.services.auth_service import AuthService
 from app.services.user_service import UserService
 
@@ -18,16 +18,15 @@ users_router = APIRouter(prefix="/users", tags=["Users"])
 async def list_users(
     db: Annotated[AsyncSession, Depends(get_session)],
     admin_user: Annotated[User, Depends(require_role("ADMIN"))],
-    limit: int = Query(default=20, ge=1, le=100),
-    offset: int = Query(default=0, ge=0),
     role: Optional[UserRole] = None,
-    status_filter: Optional[UserStatus] = Query(default=None, alias="status"),
-    q: Optional[str] = None,
+    status: Optional[UserStatus] = None,
+    limit: int = 20,
+    offset: int = 0,
 ) -> PaginatedResponse:
     service = UserService(db)
-    items, total = await service.list_users(limit=limit, offset=offset, role=role, status=status_filter, q=q)
+    users, total = await service.list_users(role=role, status=status, limit=limit, offset=offset)
     return PaginatedResponse(
-        items=[UserRead.model_validate(u) for u in items],
+        items=[UserRead.model_validate(u) for u in users],
         total=total,
         limit=limit,
         offset=offset,
@@ -42,7 +41,6 @@ async def create_user(
 ) -> UserRead:
     service = UserService(db)
     user = await service.create_user(payload)
-    response.headers["Location"] = f"/api/v1/users/{user.id}"
     response.headers["ETag"] = f'"{user.id}:{user.version}"'
     return UserRead.model_validate(user)
 
@@ -61,14 +59,16 @@ async def get_user(
 @users_router.patch("/{user_id}", response_model=UserRead)
 async def update_user(
     user_id: uuid.UUID,
-    payload: UserUpdate,
+    payload: UserPatch,
     response: Response,
     db: Annotated[AsyncSession, Depends(get_session)],
+    redis_client: Annotated[aioredis.Redis, Depends(get_redis)],
     admin_user: Annotated[User, Depends(require_role("ADMIN"))],
     if_match: Optional[str] = Header(default=None, alias="If-Match"),
 ) -> UserRead:
     expected_version = parse_if_match_version(if_match, str(user_id))
-    service = UserService(db)
+    auth_service = AuthService(db, redis_client)
+    service = UserService(db, auth_service)
     user = await service.update_user(user_id, expected_version, payload)
     response.headers["ETag"] = f'"{user.id}:{user.version}"'
     return UserRead.model_validate(user)

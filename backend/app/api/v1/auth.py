@@ -6,7 +6,7 @@ import redis.asyncio as aioredis
 from app.api.dependencies import get_current_user, get_redis
 from app.db.models.user import User
 from app.db.session import get_session
-from app.schemas.auth import AuthResponse, LoginRequest
+from app.schemas.auth import AuthResponse, LoginRequest, TokenResponse
 from app.schemas.user import UserRead
 from app.services.auth_service import AuthService
 
@@ -23,7 +23,8 @@ async def login(
     service = AuthService(db, redis_client)
     token, expires_at, user = await service.login(payload.login, payload.password, client_ip)
     return AuthResponse(
-        token=token,
+        access_token=token,
+        token_type="Bearer",
         expires_at=expires_at,
         user=UserRead.model_validate(user),
     )
