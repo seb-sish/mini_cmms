@@ -90,6 +90,12 @@ class WorkOrderRead(BaseModel):
     cancelled_by: Optional[uuid.UUID] = None
     cancellation_reason: Optional[str] = None
 
+class WorkOrderPage(BaseModel):
+    items: list[WorkOrderRead]
+    total: int
+    limit: int
+    offset: int
+
 class WorkOrderEventRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -103,6 +109,12 @@ class WorkOrderEventRead(BaseModel):
     old_assignee_id: Optional[uuid.UUID] = None
     new_assignee_id: Optional[uuid.UUID] = None
     details: Optional[str] = None
+
+class WorkOrderEventPage(BaseModel):
+    items: list[WorkOrderEventRead]
+    total: int
+    limit: int
+    offset: int
 
 class WorkHistoryRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)

@@ -1,5 +1,5 @@
 import uuid
-from fastapi import APIRouter, Depends, Header, Response, status
+from fastapi import APIRouter, Depends, Header, Query, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import get_current_user
@@ -7,7 +7,16 @@ from app.db.models.user import User, UserRole
 from app.db.models.work_order import WorkOrderStatus
 from app.db.session import get_session
 from app.errors.handlers import AppException
-from app.schemas.work_order import WorkOrderCreate, WorkOrderPatch, WorkOrderRead
+from app.schemas.work_order import (
+    CancelWorkOrderRequest,
+    ChecklistItemUpdate,
+    WorkChecklistItemRead,
+    WorkOrderAssign,
+    WorkOrderCreate,
+    WorkOrderEventPage,
+    WorkOrderPatch,
+    WorkOrderRead,
+)
 from app.services.work_order_service import WorkOrderService
 
 work_orders_router = APIRouter(prefix="/work-orders", tags=["Work Orders"])
@@ -90,3 +99,129 @@ async def patch_work_order(
     etag = f'"{wo.id}:{wo.version}"'
     response.headers["ETag"] = etag
     return wo
+
+@work_orders_router.post(
+    "/{work_order_id}/assign",
+    response_model=WorkOrderRead,
+    status_code=status.HTTP_200_OK,
+)
+async def assign_work_order(
+    work_order_id: uuid.UUID,
+    payload: WorkOrderAssign,
+    response: Response,
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+):
+    wo = await WorkOrderService.assign_work_order(
+        session, current_user, work_order_id, payload.assignee_id
+    )
+    etag = f'"{wo.id}:{wo.version}"'
+    response.headers["ETag"] = etag
+    return wo
+
+@work_orders_router.post(
+    "/{work_order_id}/reassign",
+    response_model=WorkOrderRead,
+    status_code=status.HTTP_200_OK,
+)
+async def reassign_work_order(
+    work_order_id: uuid.UUID,
+    payload: WorkOrderAssign,
+    response: Response,
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+):
+    wo = await WorkOrderService.reassign_work_order(
+        session, current_user, work_order_id, payload.assignee_id
+    )
+    etag = f'"{wo.id}:{wo.version}"'
+    response.headers["ETag"] = etag
+    return wo
+
+@work_orders_router.post(
+    "/{work_order_id}/start",
+    response_model=WorkOrderRead,
+    status_code=status.HTTP_200_OK,
+)
+async def start_work_order(
+    work_order_id: uuid.UUID,
+    response: Response,
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+):
+    wo = await WorkOrderService.start_work_order(session, current_user, work_order_id)
+    etag = f'"{wo.id}:{wo.version}"'
+    response.headers["ETag"] = etag
+    return wo
+
+@work_orders_router.patch(
+    "/{work_order_id}/checklist/{item_id}",
+    response_model=WorkChecklistItemRead,
+    status_code=status.HTTP_200_OK,
+)
+async def patch_checklist_item(
+    work_order_id: uuid.UUID,
+    item_id: uuid.UUID,
+    payload: ChecklistItemUpdate,
+    response: Response,
+    if_match: str | None = Header(None, alias="If-Match"),
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+):
+    item, wo = await WorkOrderService.check_item(
+        session=session,
+        current_user=current_user,
+        work_order_id=work_order_id,
+        item_id=item_id,
+        checked=payload.checked,
+        comment=payload.comment,
+        if_match=if_match,
+    )
+    etag = f'"{wo.id}:{wo.version}"'
+    response.headers["ETag"] = etag
+    return item
+
+@work_orders_router.post(
+    "/{work_order_id}/cancel",
+    response_model=WorkOrderRead,
+    status_code=status.HTTP_200_OK,
+)
+async def cancel_work_order(
+    work_order_id: uuid.UUID,
+    payload: CancelWorkOrderRequest,
+    response: Response,
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+):
+    wo = await WorkOrderService.cancel_work_order(
+        session, current_user, work_order_id, payload.reason
+    )
+    etag = f'"{wo.id}:{wo.version}"'
+    response.headers["ETag"] = etag
+    return wo
+
+@work_orders_router.get(
+    "/{work_order_id}/events",
+    response_model=WorkOrderEventPage,
+    status_code=status.HTTP_200_OK,
+)
+async def get_work_order_events(
+    work_order_id: uuid.UUID,
+    limit: int = Query(50, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+):
+    items, total = await WorkOrderService.list_events(
+        session=session,
+        current_user=current_user,
+        work_order_id=work_order_id,
+        limit=limit,
+        offset=offset,
+    )
+    return WorkOrderEventPage(
+        items=items,
+        total=total,
+        limit=limit,
+        offset=offset,
+    )

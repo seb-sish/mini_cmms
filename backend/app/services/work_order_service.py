@@ -9,7 +9,7 @@ from app.db.models.equipment import Equipment
 from app.db.models.fault import Fault, FaultStatus
 from app.db.models.maintenance_plan import MaintenancePlan
 from app.db.models.maintenance_schedule import MaintenanceSchedule
-from app.db.models.user import User, UserRole
+from app.db.models.user import User, UserRole, UserStatus
 from app.db.models.work_order import (
     WorkChecklistItem,
     WorkOrder,
@@ -173,3 +173,226 @@ class WorkOrderService:
                 raise AppException(404, "NOT_FOUND", "Work order not found")
 
         return wo
+
+    @classmethod
+    async def assign_work_order(
+        cls, session: AsyncSession, current_user: User, work_order_id: uuid.UUID, assignee_id: uuid.UUID
+    ) -> WorkOrder:
+        if current_user.role not in (UserRole.ADMIN, UserRole.ENGINEER):
+            raise AppException(403, "ACCESS_DENIED", "Only engineer or admin can assign work orders")
+
+        wo = await session.get(WorkOrder, work_order_id)
+        if not wo:
+            raise AppException(404, "NOT_FOUND", "Work order not found")
+
+        if wo.status != WorkOrderStatus.CREATED:
+            raise AppException(409, "INVALID_WORK_ORDER_STATE", "Can only assign work orders in CREATED state")
+
+        tech = await session.get(User, assignee_id)
+        if not tech or tech.role != UserRole.TECHNICIAN or tech.status != UserStatus.ACTIVE:
+            raise AppException(422, "INVALID_ASSIGNEE", "Assignee must be an active technician")
+
+        wo.assignee_id = tech.id
+        wo.status = WorkOrderStatus.ASSIGNED
+        wo.version += 1
+
+        event = WorkOrderEvent(
+            work_order_id=wo.id,
+            event_type=WorkOrderEventType.ASSIGNED,
+            actor_id=current_user.id,
+            from_status=WorkOrderStatus.CREATED,
+            to_status=WorkOrderStatus.ASSIGNED,
+            new_assignee_id=tech.id,
+            details=f"Assigned to {tech.full_name}",
+        )
+        session.add(event)
+        session.add(wo)
+        await session.commit()
+        return await cls.get_work_order(session, current_user, wo.id)
+
+    @classmethod
+    async def reassign_work_order(
+        cls, session: AsyncSession, current_user: User, work_order_id: uuid.UUID, assignee_id: uuid.UUID
+    ) -> WorkOrder:
+        if current_user.role not in (UserRole.ADMIN, UserRole.ENGINEER):
+            raise AppException(403, "ACCESS_DENIED", "Only engineer or admin can reassign work orders")
+
+        wo = await session.get(WorkOrder, work_order_id)
+        if not wo:
+            raise AppException(404, "NOT_FOUND", "Work order not found")
+
+        if wo.status not in (WorkOrderStatus.ASSIGNED, WorkOrderStatus.IN_PROGRESS):
+            raise AppException(409, "INVALID_WORK_ORDER_STATE", "Can only reassign ASSIGNED or IN_PROGRESS work orders")
+
+        tech = await session.get(User, assignee_id)
+        if not tech or tech.role != UserRole.TECHNICIAN or tech.status != UserStatus.ACTIVE:
+            raise AppException(422, "INVALID_ASSIGNEE", "Assignee must be an active technician")
+
+        if tech.id == wo.assignee_id:
+            raise AppException(409, "SAME_ASSIGNEE", "Work order already assigned to this technician")
+
+        old_assignee_id = wo.assignee_id
+        wo.assignee_id = tech.id
+        wo.version += 1
+
+        event = WorkOrderEvent(
+            work_order_id=wo.id,
+            event_type=WorkOrderEventType.REASSIGNED,
+            actor_id=current_user.id,
+            old_assignee_id=old_assignee_id,
+            new_assignee_id=tech.id,
+            details=f"Reassigned from {old_assignee_id} to {tech.full_name}",
+        )
+        session.add(event)
+        session.add(wo)
+        await session.commit()
+        return await cls.get_work_order(session, current_user, wo.id)
+
+    @classmethod
+    async def start_work_order(
+        cls, session: AsyncSession, current_user: User, work_order_id: uuid.UUID
+    ) -> WorkOrder:
+        wo = await session.get(WorkOrder, work_order_id)
+        if not wo:
+            raise AppException(404, "NOT_FOUND", "Work order not found")
+
+        if current_user.role == UserRole.TECHNICIAN:
+            if wo.assignee_id != current_user.id:
+                raise AppException(404, "NOT_FOUND", "Work order not found")
+        elif current_user.role not in (UserRole.ADMIN, UserRole.ENGINEER):
+            raise AppException(403, "ACCESS_DENIED", "Access denied")
+
+        if wo.status != WorkOrderStatus.ASSIGNED:
+            raise AppException(409, "INVALID_WORK_ORDER_STATE", "Work order can only be started from ASSIGNED state")
+
+        wo.status = WorkOrderStatus.IN_PROGRESS
+        wo.started_at = datetime.now(timezone.utc)
+        wo.version += 1
+
+        event = WorkOrderEvent(
+            work_order_id=wo.id,
+            event_type=WorkOrderEventType.STARTED,
+            actor_id=current_user.id,
+            from_status=WorkOrderStatus.ASSIGNED,
+            to_status=WorkOrderStatus.IN_PROGRESS,
+            details="Work started",
+        )
+        session.add(event)
+        session.add(wo)
+        await session.commit()
+        return await cls.get_work_order(session, current_user, wo.id)
+
+    @classmethod
+    async def check_item(
+        cls,
+        session: AsyncSession,
+        current_user: User,
+        work_order_id: uuid.UUID,
+        item_id: uuid.UUID,
+        checked: bool,
+        comment: Optional[str],
+        if_match: Optional[str],
+    ) -> tuple[WorkChecklistItem, WorkOrder]:
+        if not if_match:
+            raise AppException(428, "PRECONDITION_REQUIRED", "If-Match header is required")
+
+        wo = await session.get(WorkOrder, work_order_id)
+        if not wo:
+            raise AppException(404, "NOT_FOUND", "Work order not found")
+
+        if current_user.role == UserRole.TECHNICIAN:
+            if wo.assignee_id != current_user.id:
+                raise AppException(404, "NOT_FOUND", "Work order not found")
+        elif current_user.role not in (UserRole.ADMIN, UserRole.ENGINEER):
+            raise AppException(403, "ACCESS_DENIED", "Access denied")
+
+        expected_etag = f"{wo.id}:{wo.version}"
+        if if_match.strip('"') != expected_etag:
+            raise AppException(412, "VERSION_CONFLICT", "ETag mismatch")
+
+        if wo.status != WorkOrderStatus.IN_PROGRESS:
+            raise AppException(409, "INVALID_WORK_ORDER_STATE", "Checklist can only be updated when IN_PROGRESS")
+
+        item = await session.get(WorkChecklistItem, item_id)
+        if not item or item.work_order_id != wo.id:
+            raise AppException(404, "NOT_FOUND", "Checklist item not found")
+
+        item.checked = checked
+        item.checked_at = datetime.now(timezone.utc) if checked else None
+        if comment is not None:
+            item.comment = comment
+
+        wo.version += 1
+        event = WorkOrderEvent(
+            work_order_id=wo.id,
+            event_type=WorkOrderEventType.CHECKLIST_ITEM_UPDATED,
+            actor_id=current_user.id,
+            details=f"Item {item.id} checked={checked}",
+        )
+        session.add(item)
+        session.add(event)
+        session.add(wo)
+        await session.commit()
+        await session.refresh(item)
+        await session.refresh(wo)
+        return item, wo
+
+    @classmethod
+    async def cancel_work_order(
+        cls, session: AsyncSession, current_user: User, work_order_id: uuid.UUID, reason: str
+    ) -> WorkOrder:
+        if current_user.role not in (UserRole.ADMIN, UserRole.ENGINEER):
+            raise AppException(403, "ACCESS_DENIED", "Only engineer or admin can cancel work order")
+
+        wo = await session.get(WorkOrder, work_order_id)
+        if not wo:
+            raise AppException(404, "NOT_FOUND", "Work order not found")
+
+        if wo.status not in (WorkOrderStatus.CREATED, WorkOrderStatus.ASSIGNED):
+            raise AppException(409, "INVALID_WORK_ORDER_STATE", "Can only cancel CREATED or ASSIGNED work orders")
+
+        prev_status = wo.status
+        wo.status = WorkOrderStatus.CANCELLED
+        wo.cancelled_at = datetime.now(timezone.utc)
+        wo.cancelled_by = current_user.id
+        wo.cancellation_reason = reason
+
+        if wo.fault_id:
+            fault = await session.get(Fault, wo.fault_id)
+            if fault and fault.status == FaultStatus.IN_PROGRESS:
+                fault.status = FaultStatus.OPEN
+                session.add(fault)
+
+        wo.version += 1
+        event = WorkOrderEvent(
+            work_order_id=wo.id,
+            event_type=WorkOrderEventType.CANCELLED,
+            actor_id=current_user.id,
+            from_status=prev_status,
+            to_status=WorkOrderStatus.CANCELLED,
+            details=reason,
+        )
+        session.add(event)
+        session.add(wo)
+        await session.commit()
+        return await cls.get_work_order(session, current_user, wo.id)
+
+    @classmethod
+    async def list_events(
+        cls, session: AsyncSession, current_user: User, work_order_id: uuid.UUID, limit: int = 50, offset: int = 0
+    ) -> tuple[list[WorkOrderEvent], int]:
+        # get_work_order validates access control
+        await cls.get_work_order(session, current_user, work_order_id)
+
+        count_q = select(func.count(WorkOrderEvent.id)).where(WorkOrderEvent.work_order_id == work_order_id)
+        total = (await session.execute(count_q)).scalar() or 0
+
+        q = (
+            select(WorkOrderEvent)
+            .where(WorkOrderEvent.work_order_id == work_order_id)
+            .order_by(WorkOrderEvent.occurred_at.asc(), WorkOrderEvent.id.asc())
+            .offset(offset)
+            .limit(limit)
+        )
+        items = (await session.execute(q)).scalars().all()
+        return list(items), total
