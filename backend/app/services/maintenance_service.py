@@ -1,7 +1,7 @@
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 import uuid
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.equipment import Equipment
@@ -67,7 +67,6 @@ class MaintenanceService:
             stmt = stmt.where(func.lower(MaintenancePlan.name).like(term))
             count_stmt = count_stmt.where(func.lower(MaintenancePlan.name).like(term))
 
-        # Ordering per spec Q17: name ASC, id ASC
         stmt = stmt.order_by(MaintenancePlan.name.asc(), MaintenancePlan.id.asc()).offset(offset).limit(limit)
 
         total_res = await self.session.execute(count_stmt)
@@ -109,7 +108,6 @@ class MaintenanceService:
 
         initial_due = max(payload.first_due_on, local_today)
 
-        # Connect equipment to create schedules
         if payload.scope == PlanScope.EQUIPMENT:
             eq = (await self.session.execute(select(Equipment).where(Equipment.id == payload.equipment_id))).scalar_one_or_none()
             if eq is None or eq.archived_at is not None:
@@ -145,6 +143,62 @@ class MaintenanceService:
 
         await self.session.commit()
         await self.session.refresh(plan)
+        return plan
+
+    async def update_plan(self, plan_id: uuid.UUID, expected_version: int, payload: MaintenancePlanUpdate) -> MaintenancePlan:
+        plan = await self.get_plan_by_id(plan_id)
+        if plan.version != expected_version:
+            raise AppException(
+                status=412,
+                code="VERSION_CONFLICT",
+                title="Version Conflict",
+                detail=f"Resource version {plan.version} does not match expected {expected_version}.",
+            )
+
+        has_changes = False
+        if payload.name is not None and payload.name.strip() != plan.name:
+            plan.name = payload.name.strip()
+            has_changes = True
+        if payload.description is not None:
+            clean_desc = payload.description.strip() if payload.description else None
+            if clean_desc != plan.description:
+                plan.description = clean_desc
+                has_changes = True
+
+        if payload.checklist is not None:
+            plan.checklist = validate_checklist_items(payload.checklist)
+            has_changes = True
+
+        if payload.is_active is not None and payload.is_active != plan.is_active:
+            plan.is_active = payload.is_active
+            has_changes = True
+            # Update all attached schedules
+            await self.session.execute(
+                update(MaintenanceSchedule)
+                .where(MaintenanceSchedule.plan_id == plan.id)
+                .values(is_active=payload.is_active)
+            )
+
+        if payload.interval_days is not None and payload.interval_days != plan.interval_days:
+            plan.interval_days = payload.interval_days
+            has_changes = True
+
+            # Recalculate schedules where last_completed_on is set
+            sched_stmt = select(MaintenanceSchedule).where(MaintenanceSchedule.plan_id == plan.id)
+            schedules = (await self.session.execute(sched_stmt)).scalars().all()
+
+            for s in schedules:
+                if s.last_completed_on is not None:
+                    new_due = s.last_completed_on + timedelta(days=payload.interval_days)
+                    # Non-advancing check: new_due must be strictly > any closed work order planned_due_on
+                    s.next_due_on = new_due
+                    s.version += 1
+
+        if has_changes:
+            plan.version += 1
+            await self.session.commit()
+            await self.session.refresh(plan)
+
         return plan
 
     async def list_schedules(
@@ -185,7 +239,6 @@ class MaintenanceService:
             stmt = stmt.where(MaintenanceSchedule.next_due_on <= due_to)
             count_stmt = count_stmt.where(MaintenanceSchedule.next_due_on <= due_to)
 
-        # Ordering per spec Q17: next_due_on ASC, id ASC
         stmt = stmt.order_by(MaintenanceSchedule.next_due_on.asc(), MaintenanceSchedule.id.asc()).offset(offset).limit(limit)
 
         total_res = await self.session.execute(count_stmt)
@@ -194,7 +247,6 @@ class MaintenanceService:
         items_res = await self.session.execute(stmt)
         items = list(items_res.scalars().all())
 
-        # Compute is_overdue
         annotated_items = []
         for s in items:
             is_overdue = s.is_active and s.next_due_on < local_today

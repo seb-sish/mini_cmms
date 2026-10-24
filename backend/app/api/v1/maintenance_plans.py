@@ -56,3 +56,18 @@ async def get_plan(
     plan = await service.get_plan_by_id(plan_id)
     response.headers["ETag"] = f'"{plan.id}:{plan.version}"'
     return MaintenancePlanRead.model_validate(plan)
+
+@plans_router.patch("/{plan_id}", response_model=MaintenancePlanRead)
+async def update_plan(
+    plan_id: uuid.UUID,
+    payload: MaintenancePlanUpdate,
+    response: Response,
+    db: Annotated[AsyncSession, Depends(get_session)],
+    current_user: Annotated[User, Depends(require_role("ENGINEER"))],
+    if_match: Optional[str] = Header(default=None, alias="If-Match"),
+) -> MaintenancePlanRead:
+    expected_version = parse_if_match_version(if_match, str(plan_id))
+    service = MaintenanceService(db)
+    plan = await service.update_plan(plan_id, expected_version, payload)
+    response.headers["ETag"] = f'"{plan.id}:{plan.version}"'
+    return MaintenancePlanRead.model_validate(plan)
