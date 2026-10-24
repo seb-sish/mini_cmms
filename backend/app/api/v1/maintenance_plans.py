@@ -1,0 +1,58 @@
+from typing import Annotated, Optional
+import uuid
+from fastapi import APIRouter, Depends, Header, Query, Response, status
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.api.dependencies import get_current_user, parse_if_match_version, require_role
+from app.db.models.maintenance_plan import PlanScope
+from app.db.models.user import User
+from app.db.session import get_session
+from app.schemas.common import PaginatedResponse
+from app.schemas.maintenance import MaintenancePlanCreate, MaintenancePlanRead, MaintenancePlanUpdate
+from app.services.maintenance_service import MaintenanceService
+
+plans_router = APIRouter(prefix="/maintenance-plans", tags=["Maintenance Plans"])
+
+@plans_router.get("", response_model=PaginatedResponse)
+async def list_plans(
+    db: Annotated[AsyncSession, Depends(get_session)],
+    current_user: Annotated[User, Depends(get_current_user)],
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    scope: Optional[PlanScope] = None,
+    is_active: Optional[bool] = None,
+    q: Optional[str] = None,
+) -> PaginatedResponse:
+    service = MaintenanceService(db)
+    items, total = await service.list_plans(limit=limit, offset=offset, scope=scope, is_active=is_active, q=q)
+    return PaginatedResponse(
+        items=[MaintenancePlanRead.model_validate(p) for p in items],
+        total=total,
+        limit=limit,
+        offset=offset,
+    )
+
+@plans_router.post("", response_model=MaintenancePlanRead, status_code=status.HTTP_201_CREATED)
+async def create_plan(
+    payload: MaintenancePlanCreate,
+    response: Response,
+    db: Annotated[AsyncSession, Depends(get_session)],
+    current_user: Annotated[User, Depends(require_role("ENGINEER"))],
+) -> MaintenancePlanRead:
+    service = MaintenanceService(db)
+    plan = await service.create_plan(payload)
+    response.headers["Location"] = f"/api/v1/maintenance-plans/{plan.id}"
+    response.headers["ETag"] = f'"{plan.id}:{plan.version}"'
+    return MaintenancePlanRead.model_validate(plan)
+
+@plans_router.get("/{plan_id}", response_model=MaintenancePlanRead)
+async def get_plan(
+    plan_id: uuid.UUID,
+    response: Response,
+    db: Annotated[AsyncSession, Depends(get_session)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> MaintenancePlanRead:
+    service = MaintenanceService(db)
+    plan = await service.get_plan_by_id(plan_id)
+    response.headers["ETag"] = f'"{plan.id}:{plan.version}"'
+    return MaintenancePlanRead.model_validate(plan)
