@@ -51,11 +51,9 @@ STATUS_RANK_DESC = {
 class WorkOrderService:
     @staticmethod
     async def generate_work_order_number(session: AsyncSession) -> str:
-        year = datetime.now(timezone.utc).year
-        prefix = f"WO-{year}-"
-        query = select(func.count(WorkOrder.id)).where(WorkOrder.number.like(f"{prefix}%"))
-        count = (await session.execute(query)).scalar() or 0
-        return f"{prefix}{count + 1:04d}"
+        now = datetime.now(timezone.utc)
+        suffix = f"{now.strftime('%H%M%S')}{uuid.uuid4().hex[:4].upper()}"
+        return f"WO-{now.strftime('%Y%m%d')}-{suffix}"
 
     @classmethod
     async def create_work_order(
@@ -64,7 +62,7 @@ class WorkOrderService:
         if current_user.role == UserRole.OPERATOR:
             if data.type != WorkOrderType.REPAIR:
                 raise AppException(403, "ACCESS_DENIED", "Operators can only create REPAIR work orders")
-        elif current_user.role not in (UserRole.ADMIN, UserRole.ENGINEER):
+        elif current_user.role != UserRole.ENGINEER:
             raise AppException(403, "ACCESS_DENIED", "Insufficient permissions to create work order")
 
         equipment = await session.get(Equipment, data.equipment_id)
@@ -148,8 +146,8 @@ class WorkOrderService:
             chk = WorkChecklistItem(
                 work_order_id=wo.id,
                 order=item["order"],
-                title=item["description"],
-                required=item.get("is_required", True),
+                title=item.get("title") or item.get("description", "Task"),
+                required=item.get("required", item.get("is_required", True)),
                 checked=False,
             )
             session.add(chk)
@@ -185,7 +183,7 @@ class WorkOrderService:
     ) -> tuple[list[WorkOrder], int]:
         if current_user.role == UserRole.TECHNICIAN:
             assignee_id = current_user.id
-        elif current_user.role not in (UserRole.ADMIN, UserRole.ENGINEER, UserRole.OPERATOR):
+        elif current_user.role not in (UserRole.ENGINEER, UserRole.OPERATOR):
             raise AppException(403, "ACCESS_DENIED", "Access denied")
 
         conditions = []
@@ -277,15 +275,57 @@ class WorkOrderService:
         return wo
 
     @classmethod
+    async def get_work_order_for_update(cls, session: AsyncSession, work_order_id: uuid.UUID) -> WorkOrder:
+        query = (
+            select(WorkOrder)
+            .options(
+                selectinload(WorkOrder.checklist),
+                selectinload(WorkOrder.events),
+            )
+            .where(WorkOrder.id == work_order_id)
+            .with_for_update()
+        )
+        wo = (await session.execute(query)).scalars().first()
+        if not wo:
+            raise AppException(404, "NOT_FOUND", "Work order not found")
+        return wo
+
+    @classmethod
+    async def patch_work_order(
+        cls,
+        session: AsyncSession,
+        current_user: User,
+        work_order_id: uuid.UUID,
+        expected_version: int,
+        payload: WorkOrderPatch,
+    ) -> WorkOrder:
+        wo = await cls.get_work_order_for_update(session, work_order_id)
+        if wo.version != expected_version:
+            raise AppException(412, "VERSION_CONFLICT", "ETag mismatch")
+
+        if wo.status != WorkOrderStatus.CREATED:
+            raise AppException(409, "INVALID_WORK_ORDER_STATE", "Cannot patch work order after assignment")
+
+        if payload.title is not None:
+            wo.title = payload.title
+        if payload.description is not None:
+            wo.description = payload.description
+        if payload.priority is not None:
+            wo.priority = payload.priority
+
+        wo.version += 1
+        session.add(wo)
+        await session.commit()
+        return await cls.get_work_order(session, current_user, wo.id)
+
+    @classmethod
     async def assign_work_order(
         cls, session: AsyncSession, current_user: User, work_order_id: uuid.UUID, assignee_id: uuid.UUID
     ) -> WorkOrder:
-        if current_user.role not in (UserRole.ADMIN, UserRole.ENGINEER):
-            raise AppException(403, "ACCESS_DENIED", "Only engineer or admin can assign work orders")
+        if current_user.role != UserRole.ENGINEER:
+            raise AppException(403, "ACCESS_DENIED", "Only engineer can assign work orders")
 
-        wo = await session.get(WorkOrder, work_order_id)
-        if not wo:
-            raise AppException(404, "NOT_FOUND", "Work order not found")
+        wo = await cls.get_work_order_for_update(session, work_order_id)
 
         if wo.status != WorkOrderStatus.CREATED:
             raise AppException(409, "INVALID_WORK_ORDER_STATE", "Can only assign work orders in CREATED state")
@@ -316,12 +356,10 @@ class WorkOrderService:
     async def reassign_work_order(
         cls, session: AsyncSession, current_user: User, work_order_id: uuid.UUID, assignee_id: uuid.UUID
     ) -> WorkOrder:
-        if current_user.role not in (UserRole.ADMIN, UserRole.ENGINEER):
-            raise AppException(403, "ACCESS_DENIED", "Only engineer or admin can reassign work orders")
+        if current_user.role != UserRole.ENGINEER:
+            raise AppException(403, "ACCESS_DENIED", "Only engineer can reassign work orders")
 
-        wo = await session.get(WorkOrder, work_order_id)
-        if not wo:
-            raise AppException(404, "NOT_FOUND", "Work order not found")
+        wo = await cls.get_work_order_for_update(session, work_order_id)
 
         if wo.status not in (WorkOrderStatus.ASSIGNED, WorkOrderStatus.IN_PROGRESS):
             raise AppException(409, "INVALID_WORK_ORDER_STATE", "Can only reassign ASSIGNED or IN_PROGRESS work orders")
@@ -354,15 +392,12 @@ class WorkOrderService:
     async def start_work_order(
         cls, session: AsyncSession, current_user: User, work_order_id: uuid.UUID
     ) -> WorkOrder:
-        wo = await session.get(WorkOrder, work_order_id)
-        if not wo:
-            raise AppException(404, "NOT_FOUND", "Work order not found")
+        wo = await cls.get_work_order_for_update(session, work_order_id)
 
-        if current_user.role == UserRole.TECHNICIAN:
-            if wo.assignee_id != current_user.id:
-                raise AppException(404, "NOT_FOUND", "Work order not found")
-        elif current_user.role not in (UserRole.ADMIN, UserRole.ENGINEER):
-            raise AppException(403, "ACCESS_DENIED", "Access denied")
+        if current_user.role == UserRole.TECHNICIAN and wo.assignee_id != current_user.id:
+            raise AppException(404, "NOT_FOUND", "Work order not found")
+        elif current_user.role != UserRole.TECHNICIAN:
+            raise AppException(403, "ACCESS_DENIED", "Only assigned technician can start work order")
 
         if wo.status != WorkOrderStatus.ASSIGNED:
             raise AppException(409, "INVALID_WORK_ORDER_STATE", "Work order can only be started from ASSIGNED state")
@@ -398,15 +433,12 @@ class WorkOrderService:
         if not if_match:
             raise AppException(428, "PRECONDITION_REQUIRED", "If-Match header is required")
 
-        wo = await session.get(WorkOrder, work_order_id)
-        if not wo:
-            raise AppException(404, "NOT_FOUND", "Work order not found")
+        wo = await cls.get_work_order_for_update(session, work_order_id)
 
-        if current_user.role == UserRole.TECHNICIAN:
-            if wo.assignee_id != current_user.id:
-                raise AppException(404, "NOT_FOUND", "Work order not found")
-        elif current_user.role not in (UserRole.ADMIN, UserRole.ENGINEER):
-            raise AppException(403, "ACCESS_DENIED", "Access denied")
+        if current_user.role == UserRole.TECHNICIAN and wo.assignee_id != current_user.id:
+            raise AppException(404, "NOT_FOUND", "Work order not found")
+        elif current_user.role != UserRole.TECHNICIAN:
+            raise AppException(403, "ACCESS_DENIED", "Only assigned technician can update checklist items")
 
         expected_etag = f"{wo.id}:{wo.version}"
         if if_match.strip('"') != expected_etag:
@@ -443,12 +475,10 @@ class WorkOrderService:
     async def cancel_work_order(
         cls, session: AsyncSession, current_user: User, work_order_id: uuid.UUID, reason: str
     ) -> WorkOrder:
-        if current_user.role not in (UserRole.ADMIN, UserRole.ENGINEER):
-            raise AppException(403, "ACCESS_DENIED", "Only engineer or admin can cancel work order")
+        if current_user.role != UserRole.ENGINEER:
+            raise AppException(403, "ACCESS_DENIED", "Only engineer can cancel work order")
 
-        wo = await session.get(WorkOrder, work_order_id)
-        if not wo:
-            raise AppException(404, "NOT_FOUND", "Work order not found")
+        wo = await cls.get_work_order_for_update(session, work_order_id)
 
         if wo.status not in (WorkOrderStatus.CREATED, WorkOrderStatus.ASSIGNED):
             raise AppException(409, "INVALID_WORK_ORDER_STATE", "Can only cancel CREATED or ASSIGNED work orders")
@@ -488,13 +518,12 @@ class WorkOrderService:
         result: str,
         replaced_parts: list[str],
     ) -> WorkOrder:
-        wo = await cls.get_work_order(session, current_user, work_order_id)
+        wo = await cls.get_work_order_for_update(session, work_order_id)
 
-        if current_user.role == UserRole.TECHNICIAN:
-            if wo.assignee_id != current_user.id:
-                raise AppException(404, "NOT_FOUND", "Work order not found")
-        elif current_user.role not in (UserRole.ADMIN, UserRole.ENGINEER):
-            raise AppException(403, "ACCESS_DENIED", "Access denied")
+        if current_user.role == UserRole.TECHNICIAN and wo.assignee_id != current_user.id:
+            raise AppException(404, "NOT_FOUND", "Work order not found")
+        elif current_user.role != UserRole.TECHNICIAN:
+            raise AppException(403, "ACCESS_DENIED", "Only assigned technician can complete work order")
 
         if wo.status != WorkOrderStatus.IN_PROGRESS:
             raise AppException(409, "INVALID_WORK_ORDER_STATE", "Work order must be IN_PROGRESS to complete")
@@ -507,8 +536,8 @@ class WorkOrderService:
             schedule = await session.get(MaintenanceSchedule, wo.schedule_id)
             if schedule:
                 plan = await session.get(MaintenancePlan, schedule.plan_id)
-                local_completed = get_company_today()
-                if wo.planned_due_on and (local_completed + timedelta(days=plan.interval_days) <= wo.planned_due_on):
+                company_today = get_company_today()
+                if wo.planned_due_on and (company_today + timedelta(days=plan.interval_days) <= wo.planned_due_on):
                     raise AppException(409, "TOO_EARLY_TO_COMPLETE", "Completed too early before next schedule window")
 
         now = datetime.now(timezone.utc)
@@ -538,10 +567,10 @@ class WorkOrderService:
         current_user: User,
         work_order_id: uuid.UUID,
     ) -> WorkOrder:
-        if current_user.role not in (UserRole.ADMIN, UserRole.ENGINEER):
-            raise AppException(403, "ACCESS_DENIED", "Only engineer or admin can close work orders")
+        if current_user.role != UserRole.ENGINEER:
+            raise AppException(403, "ACCESS_DENIED", "Only engineer can close work orders")
 
-        wo = await cls.get_work_order(session, current_user, work_order_id)
+        wo = await cls.get_work_order_for_update(session, work_order_id)
         if wo.status != WorkOrderStatus.COMPLETED:
             raise AppException(409, "INVALID_WORK_ORDER_STATE", "Work order must be COMPLETED to close")
 
@@ -551,32 +580,33 @@ class WorkOrderService:
         wo.closed_by = current_user.id
         wo.version += 1
 
-        plan_id = None
-        if wo.type == WorkOrderType.REPAIR and wo.fault_id:
+        if wo.fault_id:
             fault = await session.get(Fault, wo.fault_id)
             if fault:
                 fault.status = FaultStatus.RESOLVED
                 session.add(fault)
-        elif wo.type == WorkOrderType.PLANNED and wo.schedule_id:
+
+        schedule = None
+        if wo.type == WorkOrderType.PLANNED and wo.schedule_id:
             schedule = await session.get(MaintenanceSchedule, wo.schedule_id)
             if schedule:
-                plan_id = schedule.plan_id
-                plan = await session.get(MaintenancePlan, plan_id)
-                last_comp = get_company_today()
-                schedule.last_completed_on = last_comp
-                schedule.next_due_on = last_comp + timedelta(days=plan.interval_days)
+                company_today = get_company_today()
+                schedule.last_completed_on = company_today
+                plan = await session.get(MaintenancePlan, schedule.plan_id)
+                interval = plan.interval_days if plan else 30
+                schedule.next_due_on = company_today + timedelta(days=interval)
                 schedule.version += 1
                 session.add(schedule)
 
         wh = WorkHistory(
             work_order_id=wo.id,
             equipment_id=wo.equipment_id,
-            plan_id=plan_id,
+            plan_id=schedule.plan_id if (wo.type == WorkOrderType.PLANNED and schedule) else None,
             fault_id=wo.fault_id,
-            technician_id=wo.assignee_id or current_user.id,
+            technician_id=wo.assignee_id,
             completed_at=wo.completed_at or now,
             closed_at=now,
-            result=wo.result or "",
+            result=wo.result or "Work completed",
             replaced_parts=wo.replaced_parts or [],
             created_at=now,
         )
@@ -629,7 +659,7 @@ class WorkHistoryService:
     ) -> tuple[list[WorkHistory], int]:
         if current_user.role == UserRole.TECHNICIAN:
             technician_id = current_user.id
-        elif current_user.role not in (UserRole.ADMIN, UserRole.ENGINEER, UserRole.OPERATOR):
+        elif current_user.role not in (UserRole.ENGINEER, UserRole.OPERATOR):
             raise AppException(403, "ACCESS_DENIED", "Access denied")
 
         conditions = []
@@ -641,6 +671,14 @@ class WorkHistoryService:
             conditions.append(func.date(WorkHistory.completed_at) >= completed_from)
         if completed_to:
             conditions.append(func.date(WorkHistory.completed_at) <= completed_to)
+
+        if current_user.role == UserRole.OPERATOR:
+            author_orders_subq = (
+                select(WorkOrder.id)
+                .where(WorkOrder.author_id == current_user.id)
+                .scalar_subquery()
+            )
+            conditions.append(WorkHistory.work_order_id.in_(author_orders_subq))
 
         count_q = select(func.count(WorkHistory.id))
         if conditions:
@@ -664,7 +702,11 @@ class WorkHistoryService:
 
         if current_user.role == UserRole.TECHNICIAN and wh.technician_id != current_user.id:
             raise AppException(404, "NOT_FOUND", "Work history entry not found")
-        elif current_user.role not in (UserRole.ADMIN, UserRole.ENGINEER, UserRole.OPERATOR):
+        elif current_user.role == UserRole.OPERATOR:
+            wo = await session.get(WorkOrder, wh.work_order_id)
+            if not wo or wo.author_id != current_user.id:
+                raise AppException(404, "NOT_FOUND", "Work history entry not found")
+        elif current_user.role != UserRole.ENGINEER:
             raise AppException(403, "ACCESS_DENIED", "Access denied")
 
         return wh

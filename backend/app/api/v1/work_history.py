@@ -4,7 +4,7 @@ import uuid
 from fastapi import APIRouter, Depends, Query, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.dependencies import get_current_user
+from app.api.dependencies import require_role
 from app.db.models.user import User
 from app.db.session import get_session
 from app.schemas.work_order import WorkHistoryPage, WorkHistoryRead
@@ -25,7 +25,7 @@ async def list_work_history(
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
     session: AsyncSession = Depends(get_session),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role("ENGINEER", "TECHNICIAN", "OPERATOR")),
 ):
     items, total = await WorkHistoryService.list_work_history(
         session=session,
@@ -52,6 +52,6 @@ async def list_work_history(
 async def get_work_history(
     history_id: uuid.UUID,
     session: AsyncSession = Depends(get_session),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role("ENGINEER", "TECHNICIAN", "OPERATOR")),
 ):
     return await WorkHistoryService.get_work_history(session, current_user, history_id)
