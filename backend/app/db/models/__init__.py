@@ -7,6 +7,7 @@ from app.db.models.maintenance_schedule import MaintenanceSchedule
 from app.db.models.work_order import WorkOrder, WorkOrderType, WorkOrderStatus, WorkChecklistItem
 from app.db.models.work_order_event import WorkOrderEvent, WorkOrderEventType
 from app.db.models.work_history import WorkHistory
+from app.db.models.notification import Notification, NotificationType
 
 __all__ = [
     "User",
@@ -25,4 +26,6 @@ __all__ = [
     "WorkOrderEvent",
     "WorkOrderEventType",
     "WorkHistory",
+    "Notification",
+    "NotificationType",
 ]
