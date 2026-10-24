@@ -3,7 +3,7 @@ import uuid
 from fastapi import APIRouter, Depends, Header, Query, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.dependencies import get_current_user, parse_if_match_version, require_role
+from app.api.dependencies import parse_if_match_version, require_role
 from app.db.models.maintenance_plan import PlanScope
 from app.db.models.user import User
 from app.db.session import get_session
@@ -16,7 +16,7 @@ plans_router = APIRouter(prefix="/maintenance-plans", tags=["Maintenance Plans"]
 @plans_router.get("", response_model=PaginatedResponse)
 async def list_plans(
     db: Annotated[AsyncSession, Depends(get_session)],
-    current_user: Annotated[User, Depends(get_current_user)],
+    current_user: Annotated[User, Depends(require_role("ENGINEER", "TECHNICIAN"))],
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
     scope: Optional[PlanScope] = None,
@@ -24,7 +24,14 @@ async def list_plans(
     q: Optional[str] = None,
 ) -> PaginatedResponse:
     service = MaintenanceService(db)
-    items, total = await service.list_plans(limit=limit, offset=offset, scope=scope, is_active=is_active, q=q)
+    items, total = await service.list_plans(
+        current_user=current_user,
+        limit=limit,
+        offset=offset,
+        scope=scope,
+        is_active=is_active,
+        q=q,
+    )
     return PaginatedResponse(
         items=[MaintenancePlanRead.model_validate(p) for p in items],
         total=total,
@@ -50,10 +57,10 @@ async def get_plan(
     plan_id: uuid.UUID,
     response: Response,
     db: Annotated[AsyncSession, Depends(get_session)],
-    current_user: Annotated[User, Depends(get_current_user)],
+    current_user: Annotated[User, Depends(require_role("ENGINEER", "TECHNICIAN"))],
 ) -> MaintenancePlanRead:
     service = MaintenanceService(db)
-    plan = await service.get_plan_by_id(plan_id)
+    plan = await service.get_plan_by_id(plan_id, current_user=current_user)
     response.headers["ETag"] = f'"{plan.id}:{plan.version}"'
     return MaintenancePlanRead.model_validate(plan)
 
