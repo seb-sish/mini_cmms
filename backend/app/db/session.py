@@ -53,6 +53,12 @@ class SessionManager:
         assert self._session_maker is not None
         return self._session_maker
 
+    async def close(self) -> None:
+        if self._engine is not None:
+            await self._engine.dispose()
+            self._engine = None
+            self._session_maker = None
+
 async def get_session() -> AsyncIterator[AsyncSession]:
     session_maker = SessionManager().get_session_maker()
     async with session_maker() as session:

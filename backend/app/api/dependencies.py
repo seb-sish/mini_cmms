@@ -16,8 +16,23 @@ from app.errors.exceptions import AppException
 
 security = HTTPBearer(auto_error=False)
 
+_redis_pool: Optional[aioredis.ConnectionPool] = None
+
+def get_redis_pool() -> aioredis.ConnectionPool:
+    global _redis_pool
+    if _redis_pool is None:
+        _redis_pool = aioredis.ConnectionPool.from_url(str(settings.redis.URL))
+    return _redis_pool
+
+async def close_redis_pool() -> None:
+    global _redis_pool
+    if _redis_pool is not None:
+        await _redis_pool.disconnect()
+        _redis_pool = None
+
 async def get_redis() -> AsyncIterator[aioredis.Redis]:
-    client = aioredis.from_url(str(settings.redis.URL))
+    pool = get_redis_pool()
+    client = aioredis.Redis(connection_pool=pool)
     try:
         yield client
     finally:
@@ -129,5 +144,5 @@ def parse_if_match_version(if_match: Optional[str], expected_id: str) -> int:
             status=422,
             code="VALIDATION_ERROR",
             title="Validation Error",
-            detail="Version in If-Match must be an integer.",
+            detail="Version part of If-Match header must be an integer.",
         )

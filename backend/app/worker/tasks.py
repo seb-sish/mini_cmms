@@ -10,6 +10,7 @@ from app.db.models.maintenance_schedule import MaintenanceSchedule
 from app.db.models.notification import Notification, NotificationType
 from app.db.models.user import User, UserRole, UserStatus
 from app.db.models.work_order import WorkOrder, WorkOrderStatus
+from app.services.equipment_service import get_company_today
 
 async def generate_maintenance_notifications(ctx: dict[str, Any]) -> int:
     session: AsyncSession = ctx.get("session")
@@ -23,7 +24,7 @@ async def generate_maintenance_notifications(ctx: dict[str, Any]) -> int:
             raise ValueError("No session or session_maker in worker context")
 
     try:
-        local_today = date.today()
+        company_today = get_company_today()
 
         # 1. Fetch active schedules
         sched_q = (
@@ -63,7 +64,7 @@ async def generate_maintenance_notifications(ctx: dict[str, Any]) -> int:
             if done:
                 continue
 
-            days_until = (sched.next_due_on - local_today).days
+            days_until = (sched.next_due_on - company_today).days
             if 1 <= days_until <= 3:
                 notif_type = NotificationType.THREE_DAYS_BEFORE
                 message = f"Maintenance for {sched.equipment.name} is due in {days_until} days ({sched.next_due_on})"
