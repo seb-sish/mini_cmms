@@ -1,7 +1,7 @@
 from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 import uuid
-from sqlalchemy import func, select
+from sqlalchemy import case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -28,6 +28,24 @@ ACTIVE_STATUSES = [
     WorkOrderStatus.IN_PROGRESS,
     WorkOrderStatus.COMPLETED,
 ]
+
+STATUS_RANK_ASC = {
+    WorkOrderStatus.CREATED: 0,
+    WorkOrderStatus.ASSIGNED: 1,
+    WorkOrderStatus.IN_PROGRESS: 2,
+    WorkOrderStatus.COMPLETED: 3,
+    WorkOrderStatus.CLOSED: 4,
+    WorkOrderStatus.CANCELLED: 5,
+}
+
+STATUS_RANK_DESC = {
+    WorkOrderStatus.CANCELLED: 0,
+    WorkOrderStatus.CLOSED: 1,
+    WorkOrderStatus.COMPLETED: 2,
+    WorkOrderStatus.IN_PROGRESS: 3,
+    WorkOrderStatus.ASSIGNED: 4,
+    WorkOrderStatus.CREATED: 5,
+}
 
 class WorkOrderService:
     @staticmethod
@@ -67,7 +85,6 @@ class WorkOrderService:
                 if fault.equipment_id != equipment.id:
                     raise AppException(422, "EQUIPMENT_MISMATCH", "Fault does not match equipment")
 
-                # Check duplicate active work order for this fault
                 dup_q = select(WorkOrder).where(
                     WorkOrder.fault_id == fault.id,
                     WorkOrder.status.in_(ACTIVE_STATUSES),
@@ -96,7 +113,6 @@ class WorkOrderService:
             if not plan or not plan.is_active or not schedule.is_active:
                 raise AppException(409, "INACTIVE_MAINTENANCE_SCHEDULE", "Schedule or plan is inactive")
 
-            # Check duplicate active planned work order
             dup_q = select(WorkOrder).where(
                 WorkOrder.schedule_id == schedule.id,
                 WorkOrder.status.in_(ACTIVE_STATUSES),
@@ -148,6 +164,90 @@ class WorkOrderService:
 
         await session.commit()
         return await cls.get_work_order(session, current_user, wo.id)
+
+    @classmethod
+    async def list_work_orders(
+        cls,
+        session: AsyncSession,
+        current_user: User,
+        equipment_id: Optional[uuid.UUID] = None,
+        type: Optional[WorkOrderType] = None,
+        status: Optional[WorkOrderStatus] = None,
+        priority: Optional[WorkOrderPriority] = None,
+        assignee_id: Optional[uuid.UUID] = None,
+        fault_id: Optional[uuid.UUID] = None,
+        schedule_id: Optional[uuid.UUID] = None,
+        q: Optional[str] = None,
+        sort: str = "-created_at",
+        limit: int = 20,
+        offset: int = 0,
+    ) -> tuple[list[WorkOrder], int]:
+        if current_user.role == UserRole.TECHNICIAN:
+            assignee_id = current_user.id
+        elif current_user.role not in (UserRole.ADMIN, UserRole.ENGINEER, UserRole.OPERATOR):
+            raise AppException(403, "ACCESS_DENIED", "Access denied")
+
+        conditions = []
+        if equipment_id:
+            conditions.append(WorkOrder.equipment_id == equipment_id)
+        if type:
+            conditions.append(WorkOrder.type == type)
+        if status:
+            conditions.append(WorkOrder.status == status)
+        if priority:
+            conditions.append(WorkOrder.priority == priority)
+        if assignee_id:
+            conditions.append(WorkOrder.assignee_id == assignee_id)
+        if fault_id:
+            conditions.append(WorkOrder.fault_id == fault_id)
+        if schedule_id:
+            conditions.append(WorkOrder.schedule_id == schedule_id)
+        if current_user.role == UserRole.OPERATOR:
+            conditions.append(WorkOrder.author_id == current_user.id)
+
+        if q and q.strip():
+            clean_q = q.strip()
+            escaped_q = clean_q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            pattern = f"%{escaped_q}%"
+            conditions.append(
+                or_(
+                    WorkOrder.number.ilike(pattern, escape="\\"),
+                    WorkOrder.title.ilike(pattern, escape="\\"),
+                    WorkOrder.description.ilike(pattern, escape="\\"),
+                )
+            )
+
+        count_q = select(func.count(WorkOrder.id))
+        if conditions:
+            count_q = count_q.where(*conditions)
+        total = (await session.execute(count_q)).scalar() or 0
+
+        query = (
+            select(WorkOrder)
+            .options(
+                selectinload(WorkOrder.checklist),
+                selectinload(WorkOrder.events),
+            )
+        )
+        if conditions:
+            query = query.where(*conditions)
+
+        if sort == "created_at":
+            query = query.order_by(WorkOrder.created_at.asc(), WorkOrder.id.asc())
+        elif sort == "-created_at":
+            query = query.order_by(WorkOrder.created_at.desc(), WorkOrder.id.desc())
+        elif sort == "status":
+            case_stmt = case(STATUS_RANK_ASC, value=WorkOrder.status)
+            query = query.order_by(case_stmt.asc(), WorkOrder.created_at.desc(), WorkOrder.id.desc())
+        elif sort == "-status":
+            case_stmt = case(STATUS_RANK_DESC, value=WorkOrder.status)
+            query = query.order_by(case_stmt.asc(), WorkOrder.created_at.desc(), WorkOrder.id.desc())
+        else:
+            raise AppException(422, "VALIDATION_ERROR", f"Invalid sort parameter: {sort}")
+
+        query = query.offset(offset).limit(limit)
+        items = (await session.execute(query)).scalars().all()
+        return list(items), total
 
     @classmethod
     async def get_work_order(

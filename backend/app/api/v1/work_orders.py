@@ -1,10 +1,11 @@
+from typing import Optional
 import uuid
 from fastapi import APIRouter, Depends, Header, Query, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import get_current_user
 from app.db.models.user import User, UserRole
-from app.db.models.work_order import WorkOrderStatus
+from app.db.models.work_order import WorkOrderPriority, WorkOrderStatus, WorkOrderType
 from app.db.session import get_session
 from app.errors.handlers import AppException
 from app.schemas.work_order import (
@@ -15,12 +16,58 @@ from app.schemas.work_order import (
     WorkOrderComplete,
     WorkOrderCreate,
     WorkOrderEventPage,
+    WorkOrderPage,
     WorkOrderPatch,
     WorkOrderRead,
 )
 from app.services.work_order_service import WorkOrderService
 
 work_orders_router = APIRouter(prefix="/work-orders", tags=["Work Orders"])
+
+@work_orders_router.get(
+    "",
+    response_model=WorkOrderPage,
+    status_code=status.HTTP_200_OK,
+)
+async def list_work_orders(
+    equipment_id: Optional[uuid.UUID] = Query(None),
+    type: Optional[WorkOrderType] = Query(None),
+    status_filter: Optional[WorkOrderStatus] = Query(None, alias="status"),
+    priority: Optional[WorkOrderPriority] = Query(None),
+    assignee_id: Optional[uuid.UUID] = Query(None),
+    fault_id: Optional[uuid.UUID] = Query(None),
+    schedule_id: Optional[uuid.UUID] = Query(None),
+    q: Optional[str] = Query(None, min_length=1, max_length=200),
+    sort: str = Query("-created_at"),
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+):
+    if sort not in ("created_at", "-created_at", "status", "-status"):
+        raise AppException(422, "VALIDATION_ERROR", f"Invalid sort parameter: {sort}")
+
+    items, total = await WorkOrderService.list_work_orders(
+        session=session,
+        current_user=current_user,
+        equipment_id=equipment_id,
+        type=type,
+        status=status_filter,
+        priority=priority,
+        assignee_id=assignee_id,
+        fault_id=fault_id,
+        schedule_id=schedule_id,
+        q=q,
+        sort=sort,
+        limit=limit,
+        offset=offset,
+    )
+    return WorkOrderPage(
+        items=items,
+        total=total,
+        limit=limit,
+        offset=offset,
+    )
 
 @work_orders_router.post(
     "",
