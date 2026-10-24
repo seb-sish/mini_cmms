@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.user import User, UserRole, UserStatus
 from app.db.models.equipment import Equipment
-from app.db.models.work_order import WorkOrder, WorkOrderType, WorkOrderStatus, WorkChecklistItem
+from app.db.models.work_order import WorkOrder, WorkOrderType, WorkOrderStatus, WorkOrderPriority, WorkChecklistItem
 from app.db.models.work_order_event import WorkOrderEvent, WorkOrderEventType
 from app.db.models.work_history import WorkHistory
 from app.core.security import hash_password
@@ -36,6 +36,8 @@ async def test_work_order_and_relations(db_session: AsyncSession):
         type=WorkOrderType.REPAIR,
         status=WorkOrderStatus.CREATED,
         title="Check pump vibration",
+        description="Check pump vibration for excessive noise",
+        priority=WorkOrderPriority.NORMAL,
         equipment_id=equipment.id,
         author_id=user.id,
     )
@@ -51,27 +53,24 @@ async def test_work_order_and_relations(db_session: AsyncSession):
     item = WorkChecklistItem(
         work_order_id=wo.id,
         order=1,
-        description="Check oil level",
-        is_required=True,
+        title="Check oil level",
+        required=True,
     )
     event = WorkOrderEvent(
         work_order_id=wo.id,
         event_type=WorkOrderEventType.CREATED,
         actor_id=user.id,
-        details={"comment": "Work order created"},
+        details="Work order created",
     )
     now = datetime.now(timezone.utc)
     history = WorkHistory(
         equipment_id=equipment.id,
         work_order_id=wo.id,
-        title=wo.title,
-        type=WorkOrderType.REPAIR,
+        technician_id=user.id,
         completed_at=now,
         closed_at=now,
-        assignee_id=user.id,
-        closed_by=user.id,
         result="Successfully inspected",
-        checklist_snapshot=[{"description": "Check oil level", "is_checked": True}],
+        replaced_parts=["gasket"],
     )
     db_session.add_all([item, event, history])
     await db_session.commit()
@@ -79,7 +78,7 @@ async def test_work_order_and_relations(db_session: AsyncSession):
     await db_session.refresh(event)
     await db_session.refresh(history)
 
-    assert item.is_checked is False
+    assert item.checked is False
     assert event.event_type == WorkOrderEventType.CREATED
-    assert history.title == "Check pump vibration"
-    assert len(history.checklist_snapshot) == 1
+    assert history.result == "Successfully inspected"
+    assert history.replaced_parts == ["gasket"]

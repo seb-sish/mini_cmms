@@ -2,8 +2,8 @@ from datetime import date, datetime
 from enum import StrEnum
 from typing import Optional
 import uuid
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Index, Integer, String, Text
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Index, Integer, JSON, String, Text
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base, TimestampMixin, UUIDPrimaryKeyMixin, VersionMixin
 
@@ -19,6 +19,12 @@ class WorkOrderStatus(StrEnum):
     CLOSED = "CLOSED"
     CANCELLED = "CANCELLED"
 
+class WorkOrderPriority(StrEnum):
+    LOW = "LOW"
+    NORMAL = "NORMAL"
+    HIGH = "HIGH"
+    CRITICAL = "CRITICAL"
+
 class WorkOrder(Base, UUIDPrimaryKeyMixin, TimestampMixin, VersionMixin):
     __tablename__ = "work_orders"
 
@@ -26,7 +32,8 @@ class WorkOrder(Base, UUIDPrimaryKeyMixin, TimestampMixin, VersionMixin):
     type: Mapped[str] = mapped_column(String(20), nullable=False)
     status: Mapped[str] = mapped_column(String(20), default=WorkOrderStatus.CREATED, nullable=False)
     title: Mapped[str] = mapped_column(String(200), nullable=False)
-    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    priority: Mapped[str] = mapped_column(String(20), default=WorkOrderPriority.NORMAL, nullable=False)
 
     equipment_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
@@ -70,8 +77,11 @@ class WorkOrder(Base, UUIDPrimaryKeyMixin, TimestampMixin, VersionMixin):
         ForeignKey("users.id", ondelete="RESTRICT"),
         nullable=True,
     )
-    cancelled_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    cancellation_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     result: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    replaced_parts: Mapped[list[str]] = mapped_column(
+        JSON().with_variant(JSONB, "postgresql"), default=list, nullable=False
+    )
 
     equipment: Mapped["Equipment"] = relationship("Equipment")
     fault: Mapped[Optional["Fault"]] = relationship("Fault")
@@ -106,9 +116,9 @@ class WorkChecklistItem(Base, UUIDPrimaryKeyMixin):
         nullable=False,
     )
     order: Mapped[int] = mapped_column(Integer, nullable=False)
-    description: Mapped[str] = mapped_column(String(500), nullable=False)
-    is_required: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
-    is_checked: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    title: Mapped[str] = mapped_column(String(300), nullable=False)
+    required: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    checked: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     checked_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     comment: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
