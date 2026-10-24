@@ -11,6 +11,7 @@ from app.db.models.maintenance_schedule import MaintenanceSchedule
 from app.db.models.work_order import WorkOrder, WorkOrderType, WorkOrderStatus, WorkOrderPriority
 from app.core.security import hash_password, create_opaque_token
 from app.db.models.session import UserSession
+from app.services.equipment_service import get_company_today
 
 @pytest.fixture
 async def technician_user(db_session: AsyncSession) -> User:
@@ -135,7 +136,7 @@ async def in_progress_planned_order(
     db_session.add(eq)
     await db_session.commit()
 
-    today = date.today()
+    today = get_company_today()
     plan = MaintenancePlan(
         name="Fan Maintenance",
         description="Regular inspection",
@@ -295,5 +296,43 @@ async def test_planned_order_requires_checklist_and_advances_schedule(
     )
     assert sched_res.status_code == 200
     sched_data = sched_res.json()
-    assert sched_data["last_completed_on"] == str(date.today())
-    assert sched_data["next_due_on"] == str(date.today() + timedelta(days=30))
+    today = get_company_today()
+    assert sched_data["last_completed_on"] == str(today)
+    assert sched_data["next_due_on"] == str(today + timedelta(days=30))
+
+@pytest.mark.asyncio
+async def test_close_work_order_advances_from_completed_date_yesterday(
+    async_client: AsyncClient,
+    tech_token: str,
+    engineer_token: str,
+    in_progress_planned_order: dict,
+    db_session: AsyncSession,
+):
+    import uuid
+    wo_id = uuid.UUID(in_progress_planned_order["id"])
+
+    # Complete work order and explicitly set completed_at to yesterday
+    wo = await db_session.get(WorkOrder, wo_id)
+    yesterday_dt = datetime.now(timezone.utc) - timedelta(days=1)
+    wo.status = WorkOrderStatus.COMPLETED
+    wo.completed_at = yesterday_dt
+    wo.result = "Completed yesterday"
+    await db_session.commit()
+
+    # Engineer closes today
+    close_res = await async_client.post(
+        f"/api/v1/work-orders/{wo_id}/close",
+        headers={"Authorization": f"Bearer {engineer_token}"},
+    )
+    assert close_res.status_code == 200
+
+    sched_res = await async_client.get(
+        f"/api/v1/maintenance-schedules/{in_progress_planned_order['schedule_id']}",
+        headers={"Authorization": f"Bearer {engineer_token}"},
+    )
+    assert sched_res.status_code == 200
+    sched_data = sched_res.json()
+
+    company_yesterday = (get_company_today() - timedelta(days=1))
+    assert sched_data["last_completed_on"] == str(company_yesterday)
+    assert sched_data["next_due_on"] == str(company_yesterday + timedelta(days=30))

@@ -11,6 +11,7 @@ from app.api.v1.work_history import work_history_router
 from app.api.v1.work_orders import work_orders_router
 
 v1_router = APIRouter(prefix="/api/v1")
+v1_router.include_router(system_router)
 v1_router.include_router(auth_router)
 v1_router.include_router(users_router)
 v1_router.include_router(equipment_router)

@@ -34,3 +34,17 @@ async def test_login_invalid_password_returns_401(async_client: AsyncClient, tes
     res = await async_client.post("/api/v1/auth/login", json={"login": "admin", "password": "WrongPassword"})
     assert res.status_code == 401
     assert res.json()["code"] == "INVALID_CREDENTIALS"
+
+@pytest.mark.asyncio
+async def test_login_rate_limiting_returns_429_rate_limited(async_client: AsyncClient, test_user: User):
+    for _ in range(5):
+        res = await async_client.post("/api/v1/auth/login", json={"login": "admin", "password": "WrongPassword"})
+        assert res.status_code == 401
+
+    # 6th attempt should be blocked with 429 RATE_LIMITED
+    res_blocked = await async_client.post("/api/v1/auth/login", json={"login": "admin", "password": "WrongPassword"})
+    assert res_blocked.status_code == 429
+    assert res_blocked.headers["content-type"] == "application/problem+json"
+    assert "Retry-After" in res_blocked.headers
+    assert res_blocked.json()["code"] == "RATE_LIMITED"
+    assert res_blocked.json()["type"] == "https://mini-cmms.example/problems/rate-limited"

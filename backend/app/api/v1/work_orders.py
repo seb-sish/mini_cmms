@@ -176,7 +176,7 @@ async def start_work_order(
         raise AppException(422, "VALIDATION_ERROR", "Unexpected body in command")
 
     wo = await WorkOrderService.start_work_order(session, current_user, work_order_id)
-    etag = f'\"{wo.id}:{wo.version}\"'
+    etag = f'"{wo.id}:{wo.version}"'
     response.headers["ETag"] = etag
     return wo
 
@@ -203,7 +203,7 @@ async def patch_checklist_item(
         comment=payload.comment,
         if_match=if_match,
     )
-    etag = f'\"{wo.id}:{wo.version}\"'
+    etag = f'"{wo.id}:{wo.version}"'
     response.headers["ETag"] = etag
     return item
 
@@ -226,7 +226,7 @@ async def complete_work_order(
         result=payload.result,
         replaced_parts=payload.replaced_parts,
     )
-    etag = f'\"{wo.id}:{wo.version}\"'
+    etag = f'"{wo.id}:{wo.version}"'
     response.headers["ETag"] = etag
     return wo
 
@@ -251,7 +251,7 @@ async def close_work_order(
         current_user=current_user,
         work_order_id=work_order_id,
     )
-    etag = f'\"{wo.id}:{wo.version}\"'
+    etag = f'"{wo.id}:{wo.version}"'
     response.headers["ETag"] = etag
     return wo
 
@@ -270,7 +270,7 @@ async def cancel_work_order(
     wo = await WorkOrderService.cancel_work_order(
         session, current_user, work_order_id, payload.reason
     )
-    etag = f'\"{wo.id}:{wo.version}\"'
+    etag = f'"{wo.id}:{wo.version}"'
     response.headers["ETag"] = etag
     return wo
 
@@ -281,7 +281,7 @@ async def cancel_work_order(
 )
 async def get_work_order_events(
     work_order_id: uuid.UUID,
-    limit: int = Query(50, ge=1, le=100),
+    limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
     session: AsyncSession = Depends(get_session),
     current_user: User = Depends(require_role("ENGINEER", "TECHNICIAN", "OPERATOR")),

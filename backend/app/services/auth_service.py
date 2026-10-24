@@ -31,7 +31,7 @@ class AuthService:
             if retry_after is not None:
                 raise AppException(
                     status=429,
-                    code="TOO_MANY_REQUESTS",
+                    code="RATE_LIMITED",
                     title="Too Many Requests",
                     detail=f"Rate limit exceeded. Try again in {retry_after} seconds.",
                     headers={"Retry-After": str(retry_after)},

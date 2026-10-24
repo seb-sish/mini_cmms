@@ -59,7 +59,7 @@ async def get_schedule(
 ) -> MaintenanceScheduleRead:
     service = MaintenanceService(db)
     sched, is_overdue, has_current = await service.get_schedule_by_id(schedule_id, current_user=current_user)
-    response.headers["ETag"] = f'\"{sched.id}:{sched.version}\"'
+    response.headers["ETag"] = f'"{sched.id}:{sched.version}"'
     dto = MaintenanceScheduleRead.model_validate(sched)
     dto.is_overdue = is_overdue
     dto.has_current_work_order = has_current

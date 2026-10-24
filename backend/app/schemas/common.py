@@ -1,5 +1,11 @@
 from typing import Any, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
+
+class HealthResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    status: str = Field(default="ok")
+    service: str = Field(default="mini-cmms-api", min_length=1, max_length=60)
+    version: str = Field(default="1.0.0", min_length=1, max_length=30)
 
 class ValidationErrorItem(BaseModel):
     field: str = Field(description="Name of the invalid parameter or field")

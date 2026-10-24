@@ -218,15 +218,14 @@ async def test_full_acceptance_flows(async_client: AsyncClient, db_session: Asyn
     sched_id = scheds[0]["id"]
     assert scheds[0]["next_due_on"] == str(today)
 
-    # 3.2 Run background notification task
+    # 3.2 Run background notification task (engineers notified)
     ctx = {"session": db_session}
     notif_count = await generate_maintenance_notifications(ctx)
-    assert notif_count >= 2
+    assert notif_count >= 1
 
-    # 3.3 Technician sees notifications
-    tech_notifs = await async_client.get("/api/v1/notifications", headers=tech_headers)
-    assert tech_notifs.status_code == 200
-    assert tech_notifs.json()["total"] >= 1
+    eng_notifs = await async_client.get("/api/v1/notifications", headers=eng_headers)
+    assert eng_notifs.status_code == 200
+    assert eng_notifs.json()["total"] >= 1
 
     # 3.4 Engineer creates PLANNED work order
     wo_plan_res = await async_client.post(
@@ -246,12 +245,19 @@ async def test_full_acceptance_flows(async_client: AsyncClient, db_session: Asyn
     wo_plan_id = wo_plan_data["id"]
     assert len(wo_plan_data["checklist"]) == 3
 
-    # 3.5 Assign to Technician and Start
+    # 3.5 Assign to Technician, trigger notification tick, and Start
     await async_client.post(
         f"/api/v1/work-orders/{wo_plan_id}/assign",
         headers=eng_headers,
         json={"assignee_id": tech_id},
     )
+    # Late assignment notification for technician
+    tech_notif_count = await generate_maintenance_notifications(ctx)
+    assert tech_notif_count >= 1
+
+    tech_notifs = await async_client.get("/api/v1/notifications", headers=tech_headers)
+    assert tech_notifs.status_code == 200
+    assert tech_notifs.json()["total"] >= 1
     start_plan = await async_client.post(
         f"/api/v1/work-orders/{wo_plan_id}/start",
         headers=tech_headers,

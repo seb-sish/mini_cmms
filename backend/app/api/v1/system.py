@@ -1,22 +1,35 @@
-from fastapi import APIRouter, Response, status
-from sqlalchemy import text
-from app.db.session import SessionManager
-from app.config import settings
+from fastapi import APIRouter, status
 import redis.asyncio as aioredis
+from sqlalchemy import text
+
+from app.api.dependencies import get_redis_pool
+from app.db.session import SessionManager
+from app.errors.exceptions import AppException
+from app.schemas.common import HealthResponse
 
 system_router = APIRouter(tags=["System"])
 
-@system_router.get("/health")
-async def health_check() -> dict[str, str]:
+@system_router.get(
+    "/health",
+    response_model=HealthResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Liveness probe",
+)
+async def health_check() -> HealthResponse:
     """Liveness probe: returns 200 ok if HTTP service is running."""
-    return {"status": "ok"}
+    return HealthResponse(status="ok", service="mini-cmms-api", version="1.0.0")
 
-@system_router.get("/ready")
-async def readiness_check(response: Response) -> dict[str, str]:
+@system_router.get(
+    "/ready",
+    response_model=HealthResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Readiness probe",
+)
+async def readiness_check() -> HealthResponse:
     """Readiness probe: verifies PostgreSQL and Redis connections."""
     db_ok = False
     redis_ok = False
-    
+
     try:
         session_maker = SessionManager().get_session_maker()
         async with session_maker() as session:
@@ -26,19 +39,19 @@ async def readiness_check(response: Response) -> dict[str, str]:
         db_ok = False
 
     try:
-        r = aioredis.from_url(str(settings.redis.URL))
+        pool = get_redis_pool()
+        r = aioredis.Redis(connection_pool=pool)
         await r.ping()
-        await r.aclose()
         redis_ok = True
     except Exception:
         redis_ok = False
 
-    if db_ok and redis_ok:
-        return {"status": "ready", "database": "ok", "redis": "ok"}
-    else:
-        response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
-        return {
-            "status": "unready",
-            "database": "ok" if db_ok else "unavailable",
-            "redis": "ok" if redis_ok else "unavailable",
-        }
+    if not db_ok or not redis_ok:
+        raise AppException(
+            status=503,
+            code="DEPENDENCY_UNAVAILABLE",
+            title="Service Unavailable",
+            detail="Database or required dependency is unavailable.",
+        )
+
+    return HealthResponse(status="ok", service="mini-cmms-api", version="1.0.0")

@@ -55,7 +55,7 @@ async def create_equipment(
     service = EquipmentService(db)
     eq = await service.create_equipment(payload)
     response.headers["Location"] = f"/api/v1/equipment/{eq.id}"
-    response.headers["ETag"] = f'\"{eq.id}:{eq.version}\"'
+    response.headers["ETag"] = f'"{eq.id}:{eq.version}"'
     return EquipmentRead.model_validate(eq)
 
 @equipment_router.get("/{equipment_id}", response_model=EquipmentRead)
@@ -67,7 +67,7 @@ async def get_equipment(
 ) -> EquipmentRead:
     service = EquipmentService(db)
     eq = await service.get_equipment_by_id(equipment_id, current_user)
-    response.headers["ETag"] = f'\"{eq.id}:{eq.version}\"'
+    response.headers["ETag"] = f'"{eq.id}:{eq.version}"'
     return EquipmentRead.model_validate(eq)
 
 @equipment_router.patch("/{equipment_id}", response_model=EquipmentRead)
@@ -82,7 +82,7 @@ async def update_equipment(
     expected_version = parse_if_match_version(if_match, str(equipment_id))
     service = EquipmentService(db)
     eq = await service.update_equipment(equipment_id, expected_version, payload, current_user)
-    response.headers["ETag"] = f'\"{eq.id}:{eq.version}\"'
+    response.headers["ETag"] = f'"{eq.id}:{eq.version}"'
     return EquipmentRead.model_validate(eq)
 
 @equipment_router.post("/{equipment_id}/archive", response_model=EquipmentRead)
@@ -94,7 +94,7 @@ async def archive_equipment(
 ) -> EquipmentRead:
     service = EquipmentService(db)
     eq = await service.archive_equipment(equipment_id, current_user)
-    response.headers["ETag"] = f'\"{eq.id}:{eq.version}\"'
+    response.headers["ETag"] = f'"{eq.id}:{eq.version}"'
     return EquipmentRead.model_validate(eq)
 
 @equipment_router.post("/{equipment_id}/restore", response_model=EquipmentRead)
@@ -106,5 +106,5 @@ async def restore_equipment(
 ) -> EquipmentRead:
     service = EquipmentService(db)
     eq = await service.restore_equipment(equipment_id, current_user)
-    response.headers["ETag"] = f'\"{eq.id}:{eq.version}\"'
+    response.headers["ETag"] = f'"{eq.id}:{eq.version}"'
     return EquipmentRead.model_validate(eq)

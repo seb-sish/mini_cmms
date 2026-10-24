@@ -64,6 +64,30 @@ async def test_user_management_lifecycle_and_etag(async_client: AsyncClient, adm
     assert patch_res.json()["full_name"] == "Ivan S. Ivanov"
 
 @pytest.mark.asyncio
+async def test_create_duplicate_user_returns_409_login_already_exists(async_client: AsyncClient, admin_auth):
+    _, token = admin_auth
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # First creation succeeds
+    res1 = await async_client.post("/api/v1/users", headers=headers, json={
+        "login": "duplicate_user",
+        "password": "Password123!",
+        "role": "TECHNICIAN"
+    })
+    assert res1.status_code == 201
+
+    # Second creation with case-insensitive duplicate -> 409 LOGIN_ALREADY_EXISTS
+    res2 = await async_client.post("/api/v1/users", headers=headers, json={
+        "login": "DUPLICATE_USER",
+        "password": "Password123!",
+        "role": "ENGINEER"
+    })
+    assert res2.status_code == 409
+    assert res2.headers["content-type"] == "application/problem+json"
+    assert res2.json()["code"] == "LOGIN_ALREADY_EXISTS"
+    assert res2.json()["type"] == "https://mini-cmms.example/problems/login-already-exists"
+
+@pytest.mark.asyncio
 async def test_cannot_demote_or_block_last_admin(async_client: AsyncClient, admin_auth):
     admin_user, token = admin_auth
     headers = {"Authorization": f"Bearer {token}"}

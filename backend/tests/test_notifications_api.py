@@ -153,3 +153,47 @@ async def test_notifications_recipient_isolation(
     )
     assert res_eng.status_code == 200
     assert res_eng.json()["id"] == str(notif_eng.id)
+
+@pytest.mark.asyncio
+async def test_notifications_rbac_admin_and_operator_forbidden(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+):
+    admin = User(
+        login="admin_notif_forbidden",
+        password_hash=hash_password("Pass123!"),
+        full_name="Admin Notif",
+        role=UserRole.ADMIN,
+        status=UserStatus.ACTIVE,
+    )
+    operator = User(
+        login="op_notif_forbidden",
+        password_hash=hash_password("Pass123!"),
+        full_name="Op Notif",
+        role=UserRole.OPERATOR,
+        status=UserStatus.ACTIVE,
+    )
+    db_session.add_all([admin, operator])
+    await db_session.commit()
+
+    raw_admin_token, token_hash_admin = create_opaque_token()
+    raw_op_token, token_hash_op = create_opaque_token()
+    db_session.add_all([
+        UserSession(user_id=admin.id, token_hash=token_hash_admin, expires_at=datetime(2099, 1, 1, tzinfo=timezone.utc)),
+        UserSession(user_id=operator.id, token_hash=token_hash_op, expires_at=datetime(2099, 1, 1, tzinfo=timezone.utc)),
+    ])
+    await db_session.commit()
+
+    res_admin = await async_client.get(
+        "/api/v1/notifications",
+        headers={"Authorization": f"Bearer {raw_admin_token}"},
+    )
+    assert res_admin.status_code == 403
+    assert res_admin.json()["code"] == "ACCESS_DENIED"
+
+    res_op = await async_client.get(
+        "/api/v1/notifications",
+        headers={"Authorization": f"Bearer {raw_op_token}"},
+    )
+    assert res_op.status_code == 403
+    assert res_op.json()["code"] == "ACCESS_DENIED"

@@ -17,7 +17,7 @@ class NotificationService:
         limit: int = 20,
         offset: int = 0,
     ) -> tuple[list[Notification], int]:
-        if current_user.role not in (UserRole.ADMIN, UserRole.ENGINEER, UserRole.TECHNICIAN):
+        if current_user.role not in (UserRole.ENGINEER, UserRole.TECHNICIAN):
             raise AppException(403, "ACCESS_DENIED", "Access denied to notifications")
 
         conditions = [Notification.recipient_id == current_user.id]
@@ -41,7 +41,7 @@ class NotificationService:
     async def get_notification(
         cls, session: AsyncSession, current_user: User, notification_id: uuid.UUID
     ) -> Notification:
-        if current_user.role not in (UserRole.ADMIN, UserRole.ENGINEER, UserRole.TECHNICIAN):
+        if current_user.role not in (UserRole.ENGINEER, UserRole.TECHNICIAN):
             raise AppException(403, "ACCESS_DENIED", "Access denied to notifications")
 
         notif = await session.get(Notification, notification_id)

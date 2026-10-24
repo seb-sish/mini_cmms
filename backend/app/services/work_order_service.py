@@ -1,4 +1,6 @@
 from app.services.equipment_service import get_company_today
+import zoneinfo
+from app.config import settings
 from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 import uuid
@@ -590,11 +592,17 @@ class WorkOrderService:
         if wo.type == WorkOrderType.PLANNED and wo.schedule_id:
             schedule = await session.get(MaintenanceSchedule, wo.schedule_id)
             if schedule:
-                company_today = get_company_today()
-                schedule.last_completed_on = company_today
+                if wo.completed_at:
+                    c_dt = wo.completed_at
+                    if c_dt.tzinfo is None:
+                        c_dt = c_dt.replace(tzinfo=timezone.utc)
+                    completed_date = c_dt.astimezone(zoneinfo.ZoneInfo(settings.app.COMPANY_TIMEZONE)).date()
+                else:
+                    completed_date = get_company_today()
+                schedule.last_completed_on = completed_date
                 plan = await session.get(MaintenancePlan, schedule.plan_id)
                 interval = plan.interval_days if plan else 30
-                schedule.next_due_on = company_today + timedelta(days=interval)
+                schedule.next_due_on = completed_date + timedelta(days=interval)
                 schedule.version += 1
                 session.add(schedule)
 
@@ -627,7 +635,7 @@ class WorkOrderService:
 
     @classmethod
     async def list_events(
-        cls, session: AsyncSession, current_user: User, work_order_id: uuid.UUID, limit: int = 50, offset: int = 0
+        cls, session: AsyncSession, current_user: User, work_order_id: uuid.UUID, limit: int = 20, offset: int = 0
     ) -> tuple[list[WorkOrderEvent], int]:
         await cls.get_work_order(session, current_user, work_order_id)
 

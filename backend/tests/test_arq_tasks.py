@@ -2,13 +2,23 @@ from datetime import date, datetime, timedelta, timezone
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models.user import User, UserRole, UserStatus
+from app.config import settings
+from app.core.security import hash_password
 from app.db.models.equipment import Equipment
 from app.db.models.maintenance_plan import MaintenancePlan
 from app.db.models.maintenance_schedule import MaintenanceSchedule
 from app.db.models.notification import Notification, NotificationType
-from app.core.security import hash_password
+from app.db.models.user import User, UserRole, UserStatus
+from app.db.models.work_order import WorkOrder, WorkOrderStatus, WorkOrderType
+from app.services.equipment_service import get_company_today
+from app.worker.main import WorkerSettings
 from app.worker.tasks import generate_maintenance_notifications
+
+def test_worker_settings_initialization():
+    assert WorkerSettings.redis_settings is not None
+    assert WorkerSettings.redis_settings.host == (settings.redis.URL.host or "localhost")
+    assert WorkerSettings.functions == [generate_maintenance_notifications]
+    assert len(WorkerSettings.cron_jobs) == 1
 
 @pytest.mark.asyncio
 async def test_arq_notification_generation(db_session: AsyncSession):
@@ -48,7 +58,8 @@ async def test_arq_notification_generation(db_session: AsyncSession):
     await db_session.commit()
 
     # Schedule due in 2 days (T-2) -> THREE_DAYS_BEFORE
-    due_date = date.today() + timedelta(days=2)
+    company_today = get_company_today()
+    due_date = company_today + timedelta(days=2)
     plan = MaintenancePlan(
         name="Press Maintenance",
         description="Regular inspection",
@@ -70,10 +81,35 @@ async def test_arq_notification_generation(db_session: AsyncSession):
     await db_session.commit()
 
     ctx = {"session": db_session}
-    created_count = await generate_maintenance_notifications(ctx)
-    # Eng and Tech should receive -> 2 notifications
-    assert created_count == 2
 
-    # Second run is idempotent (0 created)
+    # Tick 1: No assigned technician yet -> Only engineer receives notification (1)
+    created_count = await generate_maintenance_notifications(ctx)
+    assert created_count == 1
+
+    # Second run without changes is idempotent (0 created)
     second_count = await generate_maintenance_notifications(ctx)
     assert second_count == 0
+
+    # Late assignment: Create assigned work order for technician
+    wo = WorkOrder(
+        number="WO-PLN-0001",
+        title="Planned maintenance",
+        type=WorkOrderType.PLANNED,
+        status=WorkOrderStatus.ASSIGNED,
+        equipment_id=eq.id,
+        schedule_id=sched.id,
+        planned_due_on=due_date,
+        assignee_id=tech.id,
+        author_id=eng.id,
+        description="Assigned planned maintenance",
+    )
+    db_session.add(wo)
+    await db_session.commit()
+
+    # Tick 2: Technician is now assigned -> Technician receives notification (1), engineer gets no duplicate
+    third_count = await generate_maintenance_notifications(ctx)
+    assert third_count == 1
+
+    # Idempotent again
+    fourth_count = await generate_maintenance_notifications(ctx)
+    assert fourth_count == 0

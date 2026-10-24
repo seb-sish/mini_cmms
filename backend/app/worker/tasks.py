@@ -37,14 +37,12 @@ async def generate_maintenance_notifications(ctx: dict[str, Any]) -> int:
         )
         schedules = (await session.execute(sched_q)).scalars().all()
 
-        # 2. Fetch active engineers and technicians
-        users_q = select(User).where(
-            User.role.in_([UserRole.ENGINEER, UserRole.TECHNICIAN]),
+        # 2. Fetch all active engineers
+        engineers_q = select(User).where(
+            User.role == UserRole.ENGINEER,
             User.status == UserStatus.ACTIVE,
         )
-        recipients = (await session.execute(users_q)).scalars().all()
-        if not recipients:
-            return 0
+        engineers = list((await session.execute(engineers_q)).scalars().all())
 
         created_count = 0
 
@@ -73,6 +71,23 @@ async def generate_maintenance_notifications(ctx: dict[str, Any]) -> int:
                 message = f"Maintenance for {sched.equipment.name} is due today ({sched.next_due_on})"
             else:
                 continue
+
+            # Build recipients for this schedule: all active engineers + assigned active technician
+            recipients = list(engineers)
+
+            tech_q = (
+                select(User)
+                .join(WorkOrder, WorkOrder.assignee_id == User.id)
+                .where(
+                    WorkOrder.schedule_id == sched.id,
+                    WorkOrder.status.in_([WorkOrderStatus.ASSIGNED, WorkOrderStatus.IN_PROGRESS]),
+                    User.role == UserRole.TECHNICIAN,
+                    User.status == UserStatus.ACTIVE,
+                )
+            )
+            assigned_tech = (await session.execute(tech_q)).scalars().first()
+            if assigned_tech and assigned_tech.id not in [r.id for r in recipients]:
+                recipients.append(assigned_tech)
 
             for recipient in recipients:
                 # Idempotency check: (schedule_id, planned_due_on, type, recipient_id)

@@ -3,7 +3,7 @@ import uuid
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.dependencies import get_current_user
+from app.api.dependencies import require_role
 from app.db.models.notification import NotificationType
 from app.db.models.user import User
 from app.db.session import get_session
@@ -22,7 +22,7 @@ async def list_notifications(
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
     session: AsyncSession = Depends(get_session),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role("ENGINEER", "TECHNICIAN")),
 ):
     items, total = await NotificationService.list_notifications(
         session=session,
@@ -46,7 +46,7 @@ async def list_notifications(
 async def get_notification(
     notification_id: uuid.UUID,
     session: AsyncSession = Depends(get_session),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role("ENGINEER", "TECHNICIAN")),
 ):
     return await NotificationService.get_notification(
         session=session,

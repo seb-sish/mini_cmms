@@ -61,7 +61,7 @@ class UserService:
         if existing is not None:
             raise AppException(
                 status=409,
-                code="USER_ALREADY_EXISTS",
+                code="LOGIN_ALREADY_EXISTS",
                 title="Conflict",
                 detail=f"User with login '{payload.login}' already exists.",
             )
