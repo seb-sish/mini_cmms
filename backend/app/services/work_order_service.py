@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 import uuid
 from sqlalchemy import func, select
@@ -10,6 +10,7 @@ from app.db.models.fault import Fault, FaultStatus
 from app.db.models.maintenance_plan import MaintenancePlan
 from app.db.models.maintenance_schedule import MaintenanceSchedule
 from app.db.models.user import User, UserRole, UserStatus
+from app.db.models.work_history import WorkHistory
 from app.db.models.work_order import (
     WorkChecklistItem,
     WorkOrder,
@@ -378,10 +379,126 @@ class WorkOrderService:
         return await cls.get_work_order(session, current_user, wo.id)
 
     @classmethod
+    async def complete_work_order(
+        cls,
+        session: AsyncSession,
+        current_user: User,
+        work_order_id: uuid.UUID,
+        result: str,
+        replaced_parts: list[str],
+    ) -> WorkOrder:
+        wo = await cls.get_work_order(session, current_user, work_order_id)
+
+        if current_user.role == UserRole.TECHNICIAN:
+            if wo.assignee_id != current_user.id:
+                raise AppException(404, "NOT_FOUND", "Work order not found")
+        elif current_user.role not in (UserRole.ADMIN, UserRole.ENGINEER):
+            raise AppException(403, "ACCESS_DENIED", "Access denied")
+
+        if wo.status != WorkOrderStatus.IN_PROGRESS:
+            raise AppException(409, "INVALID_WORK_ORDER_STATE", "Work order must be IN_PROGRESS to complete")
+
+        if wo.type == WorkOrderType.PLANNED:
+            for item in wo.checklist:
+                if item.required and not item.checked:
+                    raise AppException(409, "INCOMPLETE_CHECKLIST", "Not all required checklist items are checked")
+
+            schedule = await session.get(MaintenanceSchedule, wo.schedule_id)
+            if schedule:
+                plan = await session.get(MaintenancePlan, schedule.plan_id)
+                now = datetime.now(timezone.utc)
+                local_completed = now.date()
+                if wo.planned_due_on and (local_completed + timedelta(days=plan.interval_days) <= wo.planned_due_on):
+                    raise AppException(409, "TOO_EARLY_TO_COMPLETE", "Completed too early before next schedule window")
+
+        now = datetime.now(timezone.utc)
+        wo.status = WorkOrderStatus.COMPLETED
+        wo.completed_at = now
+        wo.result = result
+        wo.replaced_parts = replaced_parts or []
+        wo.version += 1
+
+        event = WorkOrderEvent(
+            work_order_id=wo.id,
+            event_type=WorkOrderEventType.COMPLETED,
+            actor_id=current_user.id,
+            from_status=WorkOrderStatus.IN_PROGRESS,
+            to_status=WorkOrderStatus.COMPLETED,
+            details=result,
+        )
+        session.add(event)
+        session.add(wo)
+        await session.commit()
+        return await cls.get_work_order(session, current_user, wo.id)
+
+    @classmethod
+    async def close_work_order(
+        cls,
+        session: AsyncSession,
+        current_user: User,
+        work_order_id: uuid.UUID,
+    ) -> WorkOrder:
+        if current_user.role not in (UserRole.ADMIN, UserRole.ENGINEER):
+            raise AppException(403, "ACCESS_DENIED", "Only engineer or admin can close work orders")
+
+        wo = await cls.get_work_order(session, current_user, work_order_id)
+        if wo.status != WorkOrderStatus.COMPLETED:
+            raise AppException(409, "INVALID_WORK_ORDER_STATE", "Work order must be COMPLETED to close")
+
+        now = datetime.now(timezone.utc)
+        wo.status = WorkOrderStatus.CLOSED
+        wo.closed_at = now
+        wo.closed_by = current_user.id
+        wo.version += 1
+
+        plan_id = None
+        if wo.type == WorkOrderType.REPAIR and wo.fault_id:
+            fault = await session.get(Fault, wo.fault_id)
+            if fault:
+                fault.status = FaultStatus.RESOLVED
+                session.add(fault)
+        elif wo.type == WorkOrderType.PLANNED and wo.schedule_id:
+            schedule = await session.get(MaintenanceSchedule, wo.schedule_id)
+            if schedule:
+                plan_id = schedule.plan_id
+                plan = await session.get(MaintenancePlan, plan_id)
+                last_comp = wo.completed_at.date() if wo.completed_at else now.date()
+                schedule.last_completed_on = last_comp
+                schedule.next_due_on = last_comp + timedelta(days=plan.interval_days)
+                schedule.version += 1
+                session.add(schedule)
+
+        wh = WorkHistory(
+            work_order_id=wo.id,
+            equipment_id=wo.equipment_id,
+            plan_id=plan_id,
+            fault_id=wo.fault_id,
+            technician_id=wo.assignee_id or current_user.id,
+            completed_at=wo.completed_at or now,
+            closed_at=now,
+            result=wo.result or "",
+            replaced_parts=wo.replaced_parts or [],
+            created_at=now,
+        )
+        session.add(wh)
+
+        event = WorkOrderEvent(
+            work_order_id=wo.id,
+            event_type=WorkOrderEventType.CLOSED,
+            actor_id=current_user.id,
+            from_status=WorkOrderStatus.COMPLETED,
+            to_status=WorkOrderStatus.CLOSED,
+            details="Work order closed",
+        )
+        session.add(event)
+        session.add(wo)
+        await session.commit()
+        return await cls.get_work_order(session, current_user, wo.id)
+
+    @classmethod
     async def list_events(
         cls, session: AsyncSession, current_user: User, work_order_id: uuid.UUID, limit: int = 50, offset: int = 0
     ) -> tuple[list[WorkOrderEvent], int]:
-        # get_work_order validates access control
         await cls.get_work_order(session, current_user, work_order_id)
 
         count_q = select(func.count(WorkOrderEvent.id)).where(WorkOrderEvent.work_order_id == work_order_id)
@@ -396,3 +513,58 @@ class WorkOrderService:
         )
         items = (await session.execute(q)).scalars().all()
         return list(items), total
+
+class WorkHistoryService:
+    @classmethod
+    async def list_work_history(
+        cls,
+        session: AsyncSession,
+        current_user: User,
+        equipment_id: Optional[uuid.UUID] = None,
+        technician_id: Optional[uuid.UUID] = None,
+        completed_from: Optional[date] = None,
+        completed_to: Optional[date] = None,
+        limit: int = 20,
+        offset: int = 0,
+    ) -> tuple[list[WorkHistory], int]:
+        if current_user.role == UserRole.TECHNICIAN:
+            technician_id = current_user.id
+        elif current_user.role not in (UserRole.ADMIN, UserRole.ENGINEER, UserRole.OPERATOR):
+            raise AppException(403, "ACCESS_DENIED", "Access denied")
+
+        conditions = []
+        if equipment_id:
+            conditions.append(WorkHistory.equipment_id == equipment_id)
+        if technician_id:
+            conditions.append(WorkHistory.technician_id == technician_id)
+        if completed_from:
+            conditions.append(func.date(WorkHistory.completed_at) >= completed_from)
+        if completed_to:
+            conditions.append(func.date(WorkHistory.completed_at) <= completed_to)
+
+        count_q = select(func.count(WorkHistory.id))
+        if conditions:
+            count_q = count_q.where(*conditions)
+        total = (await session.execute(count_q)).scalar() or 0
+
+        q = select(WorkHistory)
+        if conditions:
+            q = q.where(*conditions)
+        q = q.order_by(WorkHistory.completed_at.desc(), WorkHistory.id.desc()).offset(offset).limit(limit)
+        items = (await session.execute(q)).scalars().all()
+        return list(items), total
+
+    @classmethod
+    async def get_work_history(
+        cls, session: AsyncSession, current_user: User, history_id: uuid.UUID
+    ) -> WorkHistory:
+        wh = await session.get(WorkHistory, history_id)
+        if not wh:
+            raise AppException(404, "NOT_FOUND", "Work history entry not found")
+
+        if current_user.role == UserRole.TECHNICIAN and wh.technician_id != current_user.id:
+            raise AppException(404, "NOT_FOUND", "Work history entry not found")
+        elif current_user.role not in (UserRole.ADMIN, UserRole.ENGINEER, UserRole.OPERATOR):
+            raise AppException(403, "ACCESS_DENIED", "Access denied")
+
+        return wh

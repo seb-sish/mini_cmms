@@ -130,3 +130,9 @@ class WorkHistoryRead(BaseModel):
     result: str
     replaced_parts: list[str] = Field(default_factory=list)
     created_at: datetime
+
+class WorkHistoryPage(BaseModel):
+    items: list[WorkHistoryRead]
+    total: int
+    limit: int
+    offset: int

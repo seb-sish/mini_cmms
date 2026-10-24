@@ -1,5 +1,5 @@
 import uuid
-from fastapi import APIRouter, Depends, Header, Query, Response, status
+from fastapi import APIRouter, Depends, Header, Query, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import get_current_user
@@ -12,6 +12,7 @@ from app.schemas.work_order import (
     ChecklistItemUpdate,
     WorkChecklistItemRead,
     WorkOrderAssign,
+    WorkOrderComplete,
     WorkOrderCreate,
     WorkOrderEventPage,
     WorkOrderPatch,
@@ -145,10 +146,15 @@ async def reassign_work_order(
 )
 async def start_work_order(
     work_order_id: uuid.UUID,
+    request: Request,
     response: Response,
     session: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ):
+    raw_body = await request.body()
+    if raw_body and raw_body.strip():
+        raise AppException(422, "VALIDATION_ERROR", "Unexpected body in command")
+
     wo = await WorkOrderService.start_work_order(session, current_user, work_order_id)
     etag = f'"{wo.id}:{wo.version}"'
     response.headers["ETag"] = etag
@@ -180,6 +186,54 @@ async def patch_checklist_item(
     etag = f'"{wo.id}:{wo.version}"'
     response.headers["ETag"] = etag
     return item
+
+@work_orders_router.post(
+    "/{work_order_id}/complete",
+    response_model=WorkOrderRead,
+    status_code=status.HTTP_200_OK,
+)
+async def complete_work_order(
+    work_order_id: uuid.UUID,
+    payload: WorkOrderComplete,
+    response: Response,
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+):
+    wo = await WorkOrderService.complete_work_order(
+        session=session,
+        current_user=current_user,
+        work_order_id=work_order_id,
+        result=payload.result,
+        replaced_parts=payload.replaced_parts,
+    )
+    etag = f'"{wo.id}:{wo.version}"'
+    response.headers["ETag"] = etag
+    return wo
+
+@work_orders_router.post(
+    "/{work_order_id}/close",
+    response_model=WorkOrderRead,
+    status_code=status.HTTP_200_OK,
+)
+async def close_work_order(
+    work_order_id: uuid.UUID,
+    request: Request,
+    response: Response,
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+):
+    raw_body = await request.body()
+    if raw_body and raw_body.strip():
+        raise AppException(422, "VALIDATION_ERROR", "Unexpected body in command")
+
+    wo = await WorkOrderService.close_work_order(
+        session=session,
+        current_user=current_user,
+        work_order_id=work_order_id,
+    )
+    etag = f'"{wo.id}:{wo.version}"'
+    response.headers["ETag"] = etag
+    return wo
 
 @work_orders_router.post(
     "/{work_order_id}/cancel",
