@@ -1,7 +1,7 @@
 from collections.abc import AsyncIterator
 from datetime import datetime, timezone
 from typing import Annotated, Callable, Optional
-from fastapi import Depends, Header, Request
+from fastapi import Depends, Header, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -10,11 +10,11 @@ import redis.asyncio as aioredis
 from app.config import settings
 from app.core.security import hash_token
 from app.db.models.session import UserSession
-from app.db.models.user import User, UserRole, UserStatus
+from app.db.models.user import User, UserStatus
 from app.db.session import get_session
 from app.errors.exceptions import AppException
 
-bearer_scheme = HTTPBearer(auto_error=False)
+security = HTTPBearer(auto_error=False)
 
 async def get_redis() -> AsyncIterator[aioredis.Redis]:
     client = aioredis.from_url(str(settings.redis.URL))
@@ -25,15 +25,15 @@ async def get_redis() -> AsyncIterator[aioredis.Redis]:
 
 async def get_current_user(
     request: Request,
-    credentials: Annotated[Optional[HTTPAuthorizationCredentials], Depends(bearer_scheme)],
+    credentials: Annotated[Optional[HTTPAuthorizationCredentials], Depends(security)],
     db: Annotated[AsyncSession, Depends(get_session)],
 ) -> User:
-    if credentials is None or credentials.scheme.lower() != "bearer":
+    if not credentials:
         raise AppException(
             status=401,
-            code="UNAUTHORIZED",
-            title="Unauthorized",
-            detail="Missing or invalid authentication token.",
+            code="UNAUTHENTICATED",
+            title="Unauthenticated",
+            detail="Authentication token is missing.",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
@@ -56,8 +56,8 @@ async def get_current_user(
     if row is None:
         raise AppException(
             status=401,
-            code="UNAUTHORIZED",
-            title="Unauthorized",
+            code="UNAUTHENTICATED",
+            title="Unauthenticated",
             detail="Session has expired or been revoked.",
             headers={"WWW-Authenticate": "Bearer"},
         )
@@ -65,11 +65,10 @@ async def get_current_user(
     user, session_obj = row
     if user.status != UserStatus.ACTIVE:
         raise AppException(
-            status=401,
-            code="UNAUTHORIZED",
-            title="Unauthorized",
+            status=403,
+            code="USER_BLOCKED",
+            title="User Blocked",
             detail="User account is blocked.",
-            headers={"WWW-Authenticate": "Bearer"},
         )
 
     # Attach token hash to request state for logout
@@ -82,8 +81,8 @@ def require_role(*roles: str) -> Callable[[User], User]:
         if user.role not in roles:
             raise AppException(
                 status=403,
-                code="FORBIDDEN",
-                title="Forbidden",
+                code="ACCESS_DENIED",
+                title="Access Denied",
                 detail=f"Operation not permitted for role '{user.role}'.",
             )
         return user
@@ -97,7 +96,16 @@ def parse_if_match_version(if_match: Optional[str], expected_id: str) -> int:
             title="Precondition Required",
             detail="If-Match header is required for updates.",
         )
-    clean = if_match.strip().strip('"')
+    raw = if_match.strip()
+    if raw.startswith("W/") or raw == "*" or "," in raw:
+        raise AppException(
+            status=422,
+            code="VALIDATION_ERROR",
+            title="Validation Error",
+            detail="Weak ETags, wildcards and multiple tags are not supported in If-Match.",
+        )
+
+    clean = raw.strip('"')
     parts = clean.split(":")
     if len(parts) != 2:
         raise AppException(
@@ -121,5 +129,5 @@ def parse_if_match_version(if_match: Optional[str], expected_id: str) -> int:
             status=422,
             code="VALIDATION_ERROR",
             title="Validation Error",
-            detail="Version in If-Match header must be an integer.",
+            detail="Version in If-Match must be an integer.",
         )
