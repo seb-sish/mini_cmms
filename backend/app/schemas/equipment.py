@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from typing import Optional
 import uuid
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from app.db.models.equipment import EquipmentStatus
 
 class EquipmentBase(BaseModel):
@@ -14,11 +14,19 @@ class EquipmentBase(BaseModel):
 class EquipmentCreate(EquipmentBase):
     pass
 
-class EquipmentUpdate(BaseModel):
+class EquipmentPatch(BaseModel):
     name: Optional[str] = Field(default=None, min_length=1, max_length=100)
     category: Optional[str] = Field(default=None, min_length=1, max_length=100)
     location: Optional[str] = Field(default=None, min_length=1, max_length=100)
     status: Optional[EquipmentStatus] = None
+
+    @model_validator(mode="after")
+    def validate_not_empty(self) -> "EquipmentPatch":
+        if self.name is None and self.category is None and self.location is None and self.status is None:
+            raise ValueError("At least one property must be specified in PATCH")
+        return self
+
+EquipmentUpdate = EquipmentPatch
 
 class EquipmentRead(EquipmentBase):
     model_config = ConfigDict(from_attributes=True)

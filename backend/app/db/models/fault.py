@@ -11,6 +11,12 @@ class FaultStatus(StrEnum):
     IN_PROGRESS = "IN_PROGRESS"
     RESOLVED = "RESOLVED"
 
+class FaultSeverity(StrEnum):
+    LOW = "LOW"
+    MEDIUM = "MEDIUM"
+    HIGH = "HIGH"
+    CRITICAL = "CRITICAL"
+
 class Fault(Base, UUIDPrimaryKeyMixin, TimestampMixin, VersionMixin):
     __tablename__ = "faults"
 
@@ -21,6 +27,7 @@ class Fault(Base, UUIDPrimaryKeyMixin, TimestampMixin, VersionMixin):
     )
     description: Mapped[str] = mapped_column(Text, nullable=False)
     detected_on: Mapped[date] = mapped_column(Date, nullable=False)
+    severity: Mapped[str] = mapped_column(String(20), default=FaultSeverity.MEDIUM, nullable=False)
     status: Mapped[str] = mapped_column(String(20), default=FaultStatus.OPEN, nullable=False)
     author_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
@@ -34,6 +41,7 @@ class Fault(Base, UUIDPrimaryKeyMixin, TimestampMixin, VersionMixin):
     __table_args__ = (
         Index("ix_faults_equipment_id", equipment_id),
         Index("ix_faults_status", status),
+        Index("ix_faults_severity", severity),
         Index("ix_faults_author_id", author_id),
         Index("ix_faults_detected_on", detected_on),
     )

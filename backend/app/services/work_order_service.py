@@ -1,3 +1,4 @@
+from app.services.equipment_service import get_company_today
 from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 import uuid
@@ -506,8 +507,7 @@ class WorkOrderService:
             schedule = await session.get(MaintenanceSchedule, wo.schedule_id)
             if schedule:
                 plan = await session.get(MaintenancePlan, schedule.plan_id)
-                now = datetime.now(timezone.utc)
-                local_completed = now.date()
+                local_completed = get_company_today()
                 if wo.planned_due_on and (local_completed + timedelta(days=plan.interval_days) <= wo.planned_due_on):
                     raise AppException(409, "TOO_EARLY_TO_COMPLETE", "Completed too early before next schedule window")
 
@@ -562,7 +562,7 @@ class WorkOrderService:
             if schedule:
                 plan_id = schedule.plan_id
                 plan = await session.get(MaintenancePlan, plan_id)
-                last_comp = wo.completed_at.date() if wo.completed_at else now.date()
+                last_comp = get_company_today()
                 schedule.last_completed_on = last_comp
                 schedule.next_due_on = last_comp + timedelta(days=plan.interval_days)
                 schedule.version += 1

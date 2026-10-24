@@ -9,7 +9,7 @@ from app.db.models.equipment import EquipmentStatus
 from app.db.models.user import User
 from app.db.session import get_session
 from app.schemas.common import PaginatedResponse
-from app.schemas.equipment import EquipmentCreate, EquipmentRead, EquipmentUpdate
+from app.schemas.equipment import EquipmentCreate, EquipmentPatch, EquipmentRead, EquipmentUpdate
 from app.services.equipment_service import EquipmentService
 
 equipment_router = APIRouter(prefix="/equipment", tags=["Equipment"])
@@ -17,28 +17,25 @@ equipment_router = APIRouter(prefix="/equipment", tags=["Equipment"])
 @equipment_router.get("", response_model=PaginatedResponse)
 async def list_equipment(
     db: Annotated[AsyncSession, Depends(get_session)],
-    current_user: Annotated[User, Depends(get_current_user)],
+    current_user: Annotated[User, Depends(require_role("ENGINEER", "TECHNICIAN", "OPERATOR"))],
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
     category: Optional[str] = None,
     location: Optional[str] = None,
     status_filter: Optional[EquipmentStatus] = Query(default=None, alias="status"),
+    include_archived: bool = Query(default=False),
     is_archived: Optional[bool] = None,
-    commissioned_from: Optional[date] = None,
-    commissioned_to: Optional[date] = None,
     q: Optional[str] = None,
 ) -> PaginatedResponse:
+    effective_archived = include_archived or bool(is_archived)
     service = EquipmentService(db)
     items, total = await service.list_equipment(
         current_user=current_user,
         limit=limit,
         offset=offset,
+        status_filter=status_filter,
         category=category,
-        location=location,
-        status=status_filter,
-        is_archived=is_archived,
-        commissioned_from=commissioned_from,
-        commissioned_to=commissioned_to,
+        include_archived=effective_archived,
         q=q,
     )
     return PaginatedResponse(
@@ -58,7 +55,7 @@ async def create_equipment(
     service = EquipmentService(db)
     eq = await service.create_equipment(payload)
     response.headers["Location"] = f"/api/v1/equipment/{eq.id}"
-    response.headers["ETag"] = f'"{eq.id}:{eq.version}"'
+    response.headers["ETag"] = f'\"{eq.id}:{eq.version}\"'
     return EquipmentRead.model_validate(eq)
 
 @equipment_router.get("/{equipment_id}", response_model=EquipmentRead)
@@ -66,17 +63,17 @@ async def get_equipment(
     equipment_id: uuid.UUID,
     response: Response,
     db: Annotated[AsyncSession, Depends(get_session)],
-    current_user: Annotated[User, Depends(get_current_user)],
+    current_user: Annotated[User, Depends(require_role("ENGINEER", "TECHNICIAN", "OPERATOR"))],
 ) -> EquipmentRead:
     service = EquipmentService(db)
     eq = await service.get_equipment_by_id(equipment_id, current_user)
-    response.headers["ETag"] = f'"{eq.id}:{eq.version}"'
+    response.headers["ETag"] = f'\"{eq.id}:{eq.version}\"'
     return EquipmentRead.model_validate(eq)
 
 @equipment_router.patch("/{equipment_id}", response_model=EquipmentRead)
 async def update_equipment(
     equipment_id: uuid.UUID,
-    payload: EquipmentUpdate,
+    payload: EquipmentPatch,
     response: Response,
     db: Annotated[AsyncSession, Depends(get_session)],
     current_user: Annotated[User, Depends(require_role("ENGINEER"))],
@@ -85,7 +82,7 @@ async def update_equipment(
     expected_version = parse_if_match_version(if_match, str(equipment_id))
     service = EquipmentService(db)
     eq = await service.update_equipment(equipment_id, expected_version, payload, current_user)
-    response.headers["ETag"] = f'"{eq.id}:{eq.version}"'
+    response.headers["ETag"] = f'\"{eq.id}:{eq.version}\"'
     return EquipmentRead.model_validate(eq)
 
 @equipment_router.post("/{equipment_id}/archive", response_model=EquipmentRead)
@@ -97,7 +94,7 @@ async def archive_equipment(
 ) -> EquipmentRead:
     service = EquipmentService(db)
     eq = await service.archive_equipment(equipment_id, current_user)
-    response.headers["ETag"] = f'"{eq.id}:{eq.version}"'
+    response.headers["ETag"] = f'\"{eq.id}:{eq.version}\"'
     return EquipmentRead.model_validate(eq)
 
 @equipment_router.post("/{equipment_id}/restore", response_model=EquipmentRead)
@@ -109,5 +106,5 @@ async def restore_equipment(
 ) -> EquipmentRead:
     service = EquipmentService(db)
     eq = await service.restore_equipment(equipment_id, current_user)
-    response.headers["ETag"] = f'"{eq.id}:{eq.version}"'
+    response.headers["ETag"] = f'\"{eq.id}:{eq.version}\"'
     return EquipmentRead.model_validate(eq)

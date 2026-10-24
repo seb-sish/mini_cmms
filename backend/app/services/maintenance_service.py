@@ -145,6 +145,26 @@ class MaintenanceService:
         await self.session.refresh(plan)
         return plan
 
+    async def generate_schedules_for_new_equipment(self, eq: Equipment) -> None:
+        local_today = get_local_today()
+        plans_q = select(MaintenancePlan).where(
+            MaintenancePlan.scope == PlanScope.CATEGORY,
+            MaintenancePlan.category == eq.category,
+            MaintenancePlan.is_active == True,
+        )
+        plans = (await self.session.execute(plans_q)).scalars().all()
+        for plan in plans:
+            initial_due = max(plan.first_due_on, local_today)
+            sched = MaintenanceSchedule(
+                plan_id=plan.id,
+                equipment_id=eq.id,
+                next_due_on=initial_due,
+                last_completed_on=None,
+                is_active=True,
+            )
+            self.session.add(sched)
+        await self.session.commit()
+
     async def update_plan(self, plan_id: uuid.UUID, expected_version: int, payload: MaintenancePlanUpdate) -> MaintenancePlan:
         plan = await self.get_plan_by_id(plan_id)
         if plan.version != expected_version:

@@ -5,11 +5,11 @@ from fastapi import APIRouter, Depends, Header, Query, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import get_current_user, parse_if_match_version, require_role
-from app.db.models.fault import FaultStatus
+from app.db.models.fault import FaultSeverity, FaultStatus
 from app.db.models.user import User
 from app.db.session import get_session
 from app.schemas.common import PaginatedResponse
-from app.schemas.fault import FaultCreate, FaultRead, FaultUpdate
+from app.schemas.fault import FaultCreate, FaultPatch, FaultRead
 from app.services.fault_service import FaultService
 
 faults_router = APIRouter(prefix="/faults", tags=["Faults"])
@@ -17,16 +17,21 @@ faults_router = APIRouter(prefix="/faults", tags=["Faults"])
 @faults_router.get("", response_model=PaginatedResponse)
 async def list_faults(
     db: Annotated[AsyncSession, Depends(get_session)],
-    current_user: Annotated[User, Depends(get_current_user)],
+    current_user: Annotated[User, Depends(require_role("OPERATOR", "ENGINEER", "TECHNICIAN"))],
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
     equipment_id: Optional[uuid.UUID] = None,
     status_filter: Optional[FaultStatus] = Query(default=None, alias="status"),
+    severity_filter: Optional[FaultSeverity] = Query(default=None, alias="severity"),
     author_id: Optional[uuid.UUID] = None,
     detected_from: Optional[date] = None,
     detected_to: Optional[date] = None,
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
     q: Optional[str] = None,
 ) -> PaginatedResponse:
+    effective_from = date_from or detected_from
+    effective_to = date_to or detected_to
     service = FaultService(db)
     items, total = await service.list_faults(
         current_user=current_user,
@@ -34,9 +39,10 @@ async def list_faults(
         offset=offset,
         equipment_id=equipment_id,
         status_filter=status_filter,
+        severity_filter=severity_filter,
         author_id=author_id,
-        detected_from=detected_from,
-        detected_to=detected_to,
+        detected_from=effective_from,
+        detected_to=effective_to,
         q=q,
     )
     return PaginatedResponse(
@@ -64,7 +70,7 @@ async def get_fault(
     fault_id: uuid.UUID,
     response: Response,
     db: Annotated[AsyncSession, Depends(get_session)],
-    current_user: Annotated[User, Depends(get_current_user)],
+    current_user: Annotated[User, Depends(require_role("OPERATOR", "ENGINEER", "TECHNICIAN"))],
 ) -> FaultRead:
     service = FaultService(db)
     fault = await service.get_fault_by_id(fault_id, current_user)
@@ -74,7 +80,7 @@ async def get_fault(
 @faults_router.patch("/{fault_id}", response_model=FaultRead)
 async def update_fault(
     fault_id: uuid.UUID,
-    payload: FaultUpdate,
+    payload: FaultPatch,
     response: Response,
     db: Annotated[AsyncSession, Depends(get_session)],
     current_user: Annotated[User, Depends(require_role("OPERATOR", "ENGINEER"))],

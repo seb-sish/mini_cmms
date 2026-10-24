@@ -22,6 +22,7 @@ def upgrade() -> None:
         sa.Column("equipment_id", UUID(as_uuid=True), sa.ForeignKey("equipment.id", ondelete="RESTRICT"), nullable=False),
         sa.Column("description", sa.Text(), nullable=False),
         sa.Column("detected_on", sa.Date(), nullable=False),
+        sa.Column("severity", sa.String(20), nullable=False, server_default="MEDIUM"),
         sa.Column("status", sa.String(20), nullable=False, server_default="OPEN"),
         sa.Column("author_id", UUID(as_uuid=True), sa.ForeignKey("users.id", ondelete="RESTRICT"), nullable=False),
         sa.Column("version", sa.Integer(), nullable=False, server_default="1"),
@@ -30,6 +31,7 @@ def upgrade() -> None:
     )
     op.create_index("ix_faults_equipment_id", "faults", ["equipment_id"])
     op.create_index("ix_faults_status", "faults", ["status"])
+    op.create_index("ix_faults_severity", "faults", ["severity"])
     op.create_index("ix_faults_author_id", "faults", ["author_id"])
     op.create_index("ix_faults_detected_on", "faults", ["detected_on"])
 

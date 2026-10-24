@@ -1,3 +1,4 @@
+from app.services.equipment_service import get_company_today
 from datetime import date, datetime, timedelta, timezone
 import pytest
 from httpx import AsyncClient
@@ -111,6 +112,7 @@ async def test_full_acceptance_flows(async_client: AsyncClient, db_session: Asyn
         json={
             "equipment_id": eq_id,
             "description": "Unusual cavitation noise during operation",
+            "severity": "HIGH",
             "detected_on": "2026-10-24",
         },
     )
@@ -184,7 +186,7 @@ async def test_full_acceptance_flows(async_client: AsyncClient, db_session: Asyn
     # =========================================================================
     # FLOW 3: Maintenance Plan, Schedule & Planned Work Order
     # =========================================================================
-    today = date.today()
+    today = get_company_today()
     plan_res = await async_client.post(
         "/api/v1/maintenance-plans",
         headers=eng_headers,

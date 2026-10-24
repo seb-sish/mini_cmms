@@ -5,10 +5,10 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.equipment import Equipment
-from app.db.models.fault import Fault, FaultStatus
+from app.db.models.fault import Fault, FaultSeverity, FaultStatus
 from app.db.models.user import User, UserRole
 from app.errors.exceptions import AppException
-from app.schemas.fault import FaultCreate, FaultUpdate
+from app.schemas.fault import FaultCreate, FaultPatch, FaultUpdate
 from app.services.equipment_service import escape_like, get_local_today
 
 class FaultService:
@@ -22,6 +22,7 @@ class FaultService:
         offset: int = 0,
         equipment_id: Optional[uuid.UUID] = None,
         status_filter: Optional[FaultStatus] = None,
+        severity_filter: Optional[FaultSeverity] = None,
         author_id: Optional[uuid.UUID] = None,
         detected_from: Optional[date] = None,
         detected_to: Optional[date] = None,
@@ -43,10 +44,13 @@ class FaultService:
             stmt = stmt.where(Fault.author_id == current_user.id)
             count_stmt = count_stmt.where(Fault.author_id == current_user.id)
         elif current_user.role == UserRole.TECHNICIAN:
-            # Technicians only see faults linked to work orders assigned to them
-            # For now if no work orders yet, technician sees empty
-            # We will link with work orders in Phase 5
-            pass
+            from app.db.models.work_order import WorkOrder
+            tech_wo_subq = select(WorkOrder.fault_id).where(
+                WorkOrder.assignee_id == current_user.id,
+                WorkOrder.fault_id.is_not(None),
+            )
+            stmt = stmt.where(Fault.id.in_(tech_wo_subq))
+            count_stmt = count_stmt.where(Fault.id.in_(tech_wo_subq))
 
         if equipment_id is not None:
             stmt = stmt.where(Fault.equipment_id == equipment_id)
@@ -54,6 +58,9 @@ class FaultService:
         if status_filter is not None:
             stmt = stmt.where(Fault.status == status_filter)
             count_stmt = count_stmt.where(Fault.status == status_filter)
+        if severity_filter is not None:
+            stmt = stmt.where(Fault.severity == severity_filter)
+            count_stmt = count_stmt.where(Fault.severity == severity_filter)
         if author_id is not None:
             stmt = stmt.where(Fault.author_id == author_id)
             count_stmt = count_stmt.where(Fault.author_id == author_id)
@@ -100,6 +107,21 @@ class FaultService:
                 detail=f"Fault with id '{fault_id}' does not exist.",
             )
 
+        if current_user.role == UserRole.TECHNICIAN:
+            from app.db.models.work_order import WorkOrder
+            tech_wo_stmt = select(func.count(WorkOrder.id)).where(
+                WorkOrder.assignee_id == current_user.id,
+                WorkOrder.fault_id == fault.id,
+            )
+            count = (await self.session.execute(tech_wo_stmt)).scalar() or 0
+            if count == 0:
+                raise AppException(
+                    status=404,
+                    code="NOT_FOUND",
+                    title="Fault Not Found",
+                    detail=f"Fault with id '{fault_id}' does not exist.",
+                )
+
         return fault
 
     async def create_fault(self, payload: FaultCreate, current_user: User) -> Fault:
@@ -107,7 +129,7 @@ class FaultService:
         if payload.detected_on > local_today:
             raise AppException(
                 status=422,
-                code="VALIDATION_ERROR",
+                code="FUTURE_DETECTED_DATE",
                 title="Validation Error",
                 detail="detected_on date cannot be in the future.",
             )
@@ -136,6 +158,7 @@ class FaultService:
             equipment_id=payload.equipment_id,
             description=desc,
             detected_on=payload.detected_on,
+            severity=payload.severity,
             status=FaultStatus.OPEN,
             author_id=current_user.id,
         )
@@ -148,7 +171,7 @@ class FaultService:
         self,
         fault_id: uuid.UUID,
         expected_version: int,
-        payload: FaultUpdate,
+        payload: FaultPatch,
         current_user: User,
     ) -> Fault:
         fault = await self.get_fault_by_id(fault_id, current_user)
@@ -157,17 +180,31 @@ class FaultService:
         if current_user.role == UserRole.OPERATOR and fault.author_id != current_user.id:
             raise AppException(
                 status=403,
-                code="FORBIDDEN",
+                code="ACCESS_DENIED",
                 title="Forbidden",
-                detail="Cannot edit fault reported by another operator.",
+                detail="Operators can only edit faults they registered.",
             )
 
         if fault.status != FaultStatus.OPEN:
             raise AppException(
                 status=409,
-                code="FAULT_NOT_OPEN",
+                code="INVALID_FAULT_STATUS",
                 title="Conflict",
-                detail="Only OPEN faults can be edited.",
+                detail="Fault can only be edited while in OPEN status.",
+            )
+
+        from app.db.models.work_order import WorkOrder, WorkOrderStatus
+        active_wo_stmt = select(func.count(WorkOrder.id)).where(
+            WorkOrder.fault_id == fault.id,
+            WorkOrder.status.in_([WorkOrderStatus.CREATED, WorkOrderStatus.ASSIGNED, WorkOrderStatus.IN_PROGRESS]),
+        )
+        has_active_wo = ((await self.session.execute(active_wo_stmt)).scalar() or 0) > 0
+        if has_active_wo:
+            raise AppException(
+                status=409,
+                code="FAULT_HAS_ACTIVE_WORK_ORDER",
+                title="Conflict",
+                detail="Cannot edit fault with active work order.",
             )
 
         if fault.version != expected_version:
@@ -178,17 +215,29 @@ class FaultService:
                 detail=f"Resource version {fault.version} does not match expected {expected_version}.",
             )
 
-        desc = payload.description.strip()
-        if not desc:
-            raise AppException(
-                status=422,
-                code="VALIDATION_ERROR",
-                title="Validation Error",
-                detail="description cannot be empty.",
-            )
+        has_changes = False
+        if payload.description is not None:
+            desc = payload.description.strip()
+            if desc and desc != fault.description:
+                fault.description = desc
+                has_changes = True
 
-        if fault.description != desc:
-            fault.description = desc
+        if payload.severity is not None and payload.severity != fault.severity:
+            fault.severity = payload.severity
+            has_changes = True
+
+        if payload.detected_on is not None and payload.detected_on != fault.detected_on:
+            if payload.detected_on > get_local_today():
+                raise AppException(
+                    status=422,
+                    code="FUTURE_DETECTED_DATE",
+                    title="Validation Error",
+                    detail="detected_on date cannot be in the future.",
+                )
+            fault.detected_on = payload.detected_on
+            has_changes = True
+
+        if has_changes:
             fault.version += 1
             await self.session.commit()
             await self.session.refresh(fault)
