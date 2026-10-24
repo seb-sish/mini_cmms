@@ -6,6 +6,7 @@ from app.api.v1.maintenance_plans import plans_router
 from app.api.v1.maintenance_schedules import schedules_router
 from app.api.v1.system import system_router
 from app.api.v1.users import users_router
+from app.api.v1.work_orders import work_orders_router
 
 v1_router = APIRouter(prefix="/api/v1")
 v1_router.include_router(auth_router)
@@ -14,5 +15,6 @@ v1_router.include_router(equipment_router)
 v1_router.include_router(faults_router)
 v1_router.include_router(plans_router)
 v1_router.include_router(schedules_router)
+v1_router.include_router(work_orders_router)
 
 __all__ = ["v1_router", "system_router"]
