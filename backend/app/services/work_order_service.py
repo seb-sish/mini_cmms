@@ -1,6 +1,6 @@
 import uuid
 import zoneinfo
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 
 from sqlalchemy import case, func, or_, select
 from sqlalchemy.exc import IntegrityError
@@ -779,6 +779,13 @@ class WorkOrderService:
         return list(items), total
 
 
+def _local_day_start_utc(day: date) -> datetime:
+    """Начало локального дня предприятия в UTC."""
+    tz = zoneinfo.ZoneInfo(settings.app.COMPANY_TIMEZONE)
+    local_start = datetime.combine(day, time.min, tzinfo=tz)
+    return local_start.astimezone(UTC)
+
+
 class WorkHistoryService:
     @classmethod
     async def list_work_history(
@@ -797,15 +804,25 @@ class WorkHistoryService:
         elif current_user.role not in (UserRole.ENGINEER, UserRole.OPERATOR):
             raise AppException(403, "ACCESS_DENIED", "Access denied")
 
+        if completed_from and completed_to and completed_from > completed_to:
+            raise AppException(
+                status=422,
+                code="INVALID_DATE_RANGE",
+                title="Validation Error",
+                detail="completed_from must not be later than completed_to.",
+            )
+
         conditions = []
         if equipment_id:
             conditions.append(WorkHistory.equipment_id == equipment_id)
         if technician_id:
             conditions.append(WorkHistory.technician_id == technician_id)
+        # Границы фильтра — локальные даты предприятия, приведённые к UTC;
+        # диапазон полуоткрытый, чтобы запись попадала целиком в свой день.
         if completed_from:
-            conditions.append(func.date(WorkHistory.completed_at) >= completed_from)
+            conditions.append(WorkHistory.completed_at >= _local_day_start_utc(completed_from))
         if completed_to:
-            conditions.append(func.date(WorkHistory.completed_at) <= completed_to)
+            conditions.append(WorkHistory.completed_at < _local_day_start_utc(completed_to + timedelta(days=1)))
 
         if current_user.role == UserRole.OPERATOR:
             author_orders_subq = select(WorkOrder.id).where(WorkOrder.author_id == current_user.id).scalar_subquery()

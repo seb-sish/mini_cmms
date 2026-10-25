@@ -139,3 +139,24 @@ async def test_work_history_access_matrix(async_client: AsyncClient, db_session:
     )
     assert res_op.status_code == 200
     assert res_op.json()["id"] == str(wh.id)
+
+
+@pytest.mark.asyncio
+async def test_work_history_date_range_validation(async_client: AsyncClient, db_session: AsyncSession):
+    """Обратный диапазон дат отклоняется, границы фильтра — локальные дни предприятия."""
+    _, token = await create_user_with_session(db_session, "hist_range_engineer", UserRole.ENGINEER)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    res = await async_client.get(
+        "/api/v1/work-history?completed_from=2026-02-10&completed_to=2026-02-01",
+        headers=headers,
+    )
+    assert res.status_code == 422
+    assert res.json()["code"] == "INVALID_DATE_RANGE"
+
+    res = await async_client.get(
+        "/api/v1/work-history?completed_from=2026-02-01&completed_to=2026-02-10",
+        headers=headers,
+    )
+    assert res.status_code == 200
+    assert "items" in res.json()
