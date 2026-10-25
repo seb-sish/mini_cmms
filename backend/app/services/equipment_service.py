@@ -201,20 +201,21 @@ class EquipmentService:
                 detail=f"Equipment with id '{equipment_id}' does not exist.",
             )
 
-        if eq.archived_at is not None:
-            raise AppException(
-                status=409,
-                code="EQUIPMENT_ARCHIVED",
-                title="Conflict",
-                detail="Archived equipment cannot be edited.",
-            )
-
+        # Порядок проверок: precondition (412) раньше бизнес-правил (409).
         if eq.version != expected_version:
             raise AppException(
                 status=412,
                 code="VERSION_CONFLICT",
                 title="Version Conflict",
                 detail=f"Resource version {eq.version} does not match expected {expected_version}.",
+            )
+
+        if eq.archived_at is not None:
+            raise AppException(
+                status=409,
+                code="EQUIPMENT_ARCHIVED",
+                title="Conflict",
+                detail="Archived equipment cannot be edited.",
             )
 
         has_changes = False

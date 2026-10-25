@@ -44,6 +44,28 @@ async def get_redis() -> AsyncIterator[aioredis.Redis]:
         await client.aclose()
 
 
+async def resolve_token_user(db: AsyncSession, token: str) -> User | None:
+    """Возвращает активного пользователя по bearer-токену либо None."""
+    t_hash = hash_token(token)
+    now = datetime.now(UTC)
+    stmt = (
+        select(User, UserSession)
+        .join(UserSession, UserSession.user_id == User.id)
+        .where(
+            UserSession.token_hash == t_hash,
+            UserSession.revoked_at.is_(None),
+            UserSession.expires_at > now,
+        )
+    )
+    row = (await db.execute(stmt)).first()
+    if row is None:
+        return None
+    user, _session_obj = row
+    if user.status != UserStatus.ACTIVE:
+        return None
+    return user
+
+
 async def get_current_user(
     request: Request,
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(security)],

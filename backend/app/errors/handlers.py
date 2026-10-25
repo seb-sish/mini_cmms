@@ -1,3 +1,8 @@
+import inspect
+import json
+import re
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -6,6 +11,87 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from app.errors.exceptions import AppException
 from app.schemas.common import ProblemDetail, ValidationErrorItem
 
+# Публичные точки с телом: для них разбор тела не требует аутентификации.
+PUBLIC_BODY_PATHS = frozenset({"/api/v1/auth/login"})
+
+
+def _replay_receive(body: bytes):
+    """Возвращает канал, отдающий уже прочитанное тело запроса."""
+
+    async def receive() -> dict:
+        return {"type": "http.request", "body": body, "more_body": False}
+
+    return receive
+
+
+def _openapi_path_pattern(template: str) -> re.Pattern[str]:
+    parts = re.split(r"(\{[^}]+\})", template)
+    return re.compile("^" + "".join("[^/]+" if p.startswith("{") else re.escape(p) for p in parts) + "$")
+
+
+def _allowed_methods(app, path: str) -> str:
+    """Разрешённые для пути методы берутся из нормативной OpenAPI-спецификации."""
+    try:
+        schema = app.openapi()
+    except Exception:
+        return ""
+    servers = schema.get("servers") or []
+    prefix = servers[0].get("url", "") if servers else ""
+    relative = path[len(prefix) :] if prefix and path.startswith(prefix) else path
+    relative = relative or "/"
+
+    methods: set[str] = set()
+    for template, operations in (schema.get("paths") or {}).items():
+        if not _openapi_path_pattern(template).match(relative):
+            continue
+        for method in operations:
+            if method in ("get", "post", "put", "patch", "delete"):
+                methods.add(method.upper())
+    return ", ".join(sorted(methods))
+
+
+async def _bearer_token(request: Request) -> str | None:
+    header = request.headers.get("authorization")
+    if not header:
+        return None
+    scheme, _, token = header.partition(" ")
+    if scheme.lower() != "bearer" or not token.strip():
+        return None
+    return token.strip()
+
+
+@asynccontextmanager
+async def _probe_session(request: Request):
+    """Сессия для проверки токена: та же, что использует приложение (включая override в тестах)."""
+    from app.db.session import SessionManager, get_session
+
+    override = request.app.dependency_overrides.get(get_session)
+    if override is not None:
+        candidate = override()
+        if inspect.isawaitable(candidate):
+            candidate = await candidate
+        if hasattr(candidate, "__anext__"):
+            async for sess in candidate:
+                yield sess
+                break
+        else:
+            yield candidate
+        return
+    session_maker = SessionManager().get_session_maker()
+    async with session_maker() as db:
+        yield db
+
+
+async def _is_authenticated(request: Request) -> bool:
+    """Проверяет bearer-токен без разбора тела запроса."""
+    token = await _bearer_token(request)
+    if not token:
+        return False
+    from app.api.dependencies import resolve_token_user
+
+    async with _probe_session(request) as db:
+        return await resolve_token_user(db, token) is not None
+
 
 def register_error_handlers(app: FastAPI) -> None:
 
@@ -13,20 +99,65 @@ def register_error_handlers(app: FastAPI) -> None:
     async def content_type_and_protocol_middleware(request: Request, call_next):
         if request.method in ("POST", "PUT", "PATCH"):
             content_type = request.headers.get("content-type")
-            # If Content-Type is specified and not json/problem+json
-            if content_type and not (
-                content_type.startswith("application/json") or content_type.startswith("application/problem+json")
-            ):
+            unsupported = bool(
+                content_type
+                and not (
+                    content_type.startswith("application/json") or content_type.startswith("application/problem+json")
+                )
+            )
+            malformed = False
+            if not unsupported:
+                # Тело разбирается до зависимостей аутентификации, поэтому некорректный
+                # JSON проверяется здесь и возвращается downstream через повторный канал.
+                body = await request.body()
+                request.scope["receive"] = _replay_receive(body)
+                if body:
+                    try:
+                        json.loads(body)
+                    except ValueError:
+                        malformed = True
+
+            if unsupported or malformed:
+                # Порядок проверок: аутентификация раньше синтаксиса.
+                # Публичные точки (вход) разбираются без аутентификации.
+                if request.url.path not in PUBLIC_BODY_PATHS and not await _is_authenticated(request):
+                    problem = ProblemDetail(
+                        type="https://mini-cmms.example/problems/unauthenticated",
+                        title="Unauthenticated",
+                        status=status.HTTP_401_UNAUTHORIZED,
+                        detail="Authentication token is missing.",
+                        instance=str(request.url.path),
+                        code="UNAUTHENTICATED",
+                    )
+                    return JSONResponse(
+                        status_code=status.HTTP_401_UNAUTHORIZED,
+                        content=problem.model_dump(exclude_none=True),
+                        headers={"Content-Type": "application/problem+json", "WWW-Authenticate": "Bearer"},
+                    )
+                if unsupported:
+                    problem = ProblemDetail(
+                        type="https://mini-cmms.example/problems/unsupported-media-type",
+                        title="Unsupported Media Type",
+                        status=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+                        detail=f"Content-Type '{content_type}' is not supported. Use 'application/json'.",
+                        instance=str(request.url.path),
+                        code="UNSUPPORTED_MEDIA_TYPE",
+                    )
+                    return JSONResponse(
+                        status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+                        content=problem.model_dump(exclude_none=True),
+                        headers={"Content-Type": "application/problem+json"},
+                    )
                 problem = ProblemDetail(
-                    type="https://mini-cmms.example/problems/unsupported-media-type",
-                    title="Unsupported Media Type",
-                    status=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-                    detail=f"Content-Type '{content_type}' is not supported. Use 'application/json'.",
+                    type="https://mini-cmms.example/problems/malformed-json",
+                    title="Malformed JSON",
+                    status=status.HTTP_400_BAD_REQUEST,
+                    detail="The request body contains invalid JSON.",
                     instance=str(request.url.path),
-                    code="UNSUPPORTED_MEDIA_TYPE",
+                    code="MALFORMED_JSON",
                 )
                 return JSONResponse(
-                    status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+                    status_code=status.HTTP_400_BAD_REQUEST,
                     content=problem.model_dump(exclude_none=True),
                     headers={"Content-Type": "application/problem+json"},
                 )
@@ -130,6 +261,10 @@ def register_error_handlers(app: FastAPI) -> None:
         headers = {"Content-Type": "application/problem+json"}
         if exc.headers:
             headers.update(exc.headers)
+        if exc.status_code == status.HTTP_405_METHOD_NOT_ALLOWED:
+            allow = _allowed_methods(request.app, request.url.path)
+            if allow:
+                headers["Allow"] = allow
         return JSONResponse(
             status_code=exc.status_code,
             content=problem.model_dump(exclude_none=True),

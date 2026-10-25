@@ -7,6 +7,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.api.dependencies import parse_if_match_version
 from app.config import settings
 from app.db.base import locked, pairing_lock
 from app.db.models.equipment import Equipment
@@ -512,9 +513,6 @@ class WorkOrderService:
         if_match: str | None = None,
         comment_set: bool = True,
     ) -> tuple[WorkChecklistItem, WorkOrder]:
-        if not if_match:
-            raise AppException(428, "PRECONDITION_REQUIRED", "If-Match header is required")
-
         wo = await cls.get_work_order_for_update(session, work_order_id)
 
         if current_user.role == UserRole.TECHNICIAN and wo.assignee_id != current_user.id:
@@ -522,8 +520,9 @@ class WorkOrderService:
         elif current_user.role != UserRole.TECHNICIAN:
             raise AppException(403, "ACCESS_DENIED", "Only assigned technician can update checklist items")
 
-        expected_etag = f"{wo.id}:{wo.version}"
-        if if_match.strip('"') != expected_etag:
+        # Единый разбор If-Match: отсутствие — 428, некорректный формат — 422.
+        expected_version = parse_if_match_version(if_match, str(wo.id))
+        if wo.version != expected_version:
             raise AppException(412, "VERSION_CONFLICT", "ETag mismatch")
 
         if wo.status != WorkOrderStatus.IN_PROGRESS:

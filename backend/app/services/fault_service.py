@@ -199,6 +199,15 @@ class FaultService:
                 detail="Operators can only edit faults they registered.",
             )
 
+        # Порядок проверок: precondition (412) раньше бизнес-правил (409).
+        if fault.version != expected_version:
+            raise AppException(
+                status=412,
+                code="VERSION_CONFLICT",
+                title="Version Conflict",
+                detail=f"Resource version {fault.version} does not match expected {expected_version}.",
+            )
+
         if fault.status != FaultStatus.OPEN:
             raise AppException(
                 status=409,
@@ -227,14 +236,6 @@ class FaultService:
                 code="FAULT_HAS_ACTIVE_WORK_ORDER",
                 title="Conflict",
                 detail="Cannot edit fault with active work order.",
-            )
-
-        if fault.version != expected_version:
-            raise AppException(
-                status=412,
-                code="VERSION_CONFLICT",
-                title="Version Conflict",
-                detail=f"Resource version {fault.version} does not match expected {expected_version}.",
             )
 
         has_changes = False
