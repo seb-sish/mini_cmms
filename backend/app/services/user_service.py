@@ -1,6 +1,6 @@
 from typing import Optional
 import uuid
-from sqlalchemy import func, select
+from sqlalchemy import text, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import hash_password
@@ -83,6 +83,13 @@ class UserService:
         return user
 
     async def update_user(self, user_id: uuid.UUID, expected_version: int, payload: UserPatch) -> User:
+        if (payload.role is not None and payload.role != UserRole.ADMIN) or (
+            payload.status is not None and payload.status == UserStatus.BLOCKED
+        ):
+            conn = await self.session.connection()
+            if conn.dialect.name == "postgresql":
+                await self.session.execute(text("SELECT pg_advisory_xact_lock(84729104)"))
+
         stmt = select(User).where(User.id == user_id).with_for_update()
         res = await self.session.execute(stmt)
         user = res.scalar_one_or_none()
@@ -107,7 +114,7 @@ class UserService:
         if payload.role is not None and payload.role != user.role:
             if user.role == UserRole.TECHNICIAN and payload.role != UserRole.TECHNICIAN:
                 from app.db.models.work_order import WorkOrder, WorkOrderStatus
-                active_statuses = [WorkOrderStatus.ASSIGNED, WorkOrderStatus.IN_PROGRESS]
+                active_statuses = [WorkOrderStatus.ASSIGNED, WorkOrderStatus.IN_PROGRESS, WorkOrderStatus.COMPLETED]
                 stmt = select(func.count(WorkOrder.id)).where(
                     WorkOrder.assignee_id == user.id,
                     WorkOrder.status.in_(active_statuses),
@@ -159,14 +166,14 @@ class UserService:
             user.status = payload.status
             has_changes = True
             if payload.status == UserStatus.BLOCKED and self.auth_service:
-                await self.auth_service.revoke_all_user_sessions(user_id)
+                await self.auth_service.revoke_all_user_sessions(user_id, commit=False)
 
         # 3. New password update
         if payload.new_password is not None:
             user.password_hash = hash_password(payload.new_password)
             has_changes = True
             if self.auth_service:
-                await self.auth_service.revoke_all_user_sessions(user_id)
+                await self.auth_service.revoke_all_user_sessions(user_id, commit=False)
 
         if has_changes:
             user.version += 1
@@ -182,7 +189,7 @@ class UserService:
         await self.session.commit()
 
         if self.auth_service:
-            await self.auth_service.revoke_all_user_sessions(user_id)
+            await self.auth_service.revoke_all_user_sessions(user_id, commit=False)
 
     async def update_status(self, user_id: uuid.UUID, payload: StatusUpdate) -> User:
         user = await self.get_user_by_id(user_id)
@@ -209,6 +216,6 @@ class UserService:
         await self.session.refresh(user)
 
         if payload.status == UserStatus.BLOCKED and self.auth_service:
-            await self.auth_service.revoke_all_user_sessions(user_id)
+            await self.auth_service.revoke_all_user_sessions(user_id, commit=False)
 
         return user

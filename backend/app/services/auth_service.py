@@ -37,8 +37,13 @@ class AuthService:
                     headers={"Retry-After": str(retry_after)},
                 )
 
-        # Lookup user
-        stmt = select(User).where(func.lower(User.login) == norm_login)
+        # Lookup user with row lock to serialize against concurrent status/password changes
+        stmt = (
+            select(User)
+            .where(func.lower(User.login) == norm_login)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
         result = await self.session.execute(stmt)
         user: Optional[User] = result.scalar_one_or_none()
 
@@ -77,11 +82,12 @@ class AuthService:
         await self.session.execute(stmt)
         await self.session.commit()
 
-    async def revoke_all_user_sessions(self, user_id) -> None:
+    async def revoke_all_user_sessions(self, user_id, commit: bool = True) -> None:
         stmt = (
             update(UserSession)
             .where(UserSession.user_id == user_id, UserSession.revoked_at.is_(None))
             .values(revoked_at=datetime.now(timezone.utc))
         )
         await self.session.execute(stmt)
-        await self.session.commit()
+        if commit:
+            await self.session.commit()
