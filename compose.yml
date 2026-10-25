@@ -10,7 +10,7 @@ services:
     env_file:
       - .env.example
     environment:
-      - DB_DSN=postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-mini_cmms}
+      - DB_DSN=postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}@postgres:5432/${POSTGRES_DB:-mini_cmms}
       - REDIS_URL=redis://redis:6379/0
     depends_on:
       postgres:
@@ -28,7 +28,7 @@ services:
     env_file:
       - .env.example
     environment:
-      - DB_DSN=postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-mini_cmms}
+      - DB_DSN=postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}@postgres:5432/${POSTGRES_DB:-mini_cmms}
     command: >
       bash -c "uv run alembic upgrade head"
     depends_on:
@@ -45,7 +45,7 @@ services:
     env_file:
       - .env.example
     environment:
-      - DB_DSN=postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-mini_cmms}
+      - DB_DSN=postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}@postgres:5432/${POSTGRES_DB:-mini_cmms}
       - REDIS_URL=redis://redis:6379/0
     command: >
       uv run arq app.worker.main.WorkerSettings
@@ -63,11 +63,9 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
       POSTGRES_DB: ${POSTGRES_DB:-mini_cmms}
       TZ: UTC
-    ports:
-      - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -80,8 +78,6 @@ services:
     image: redis:7-alpine
     container_name: mini_cmms_redis
     restart: unless-stopped
-    ports:
-      - "6379:6379"
     volumes:
       - redis_data:/data
     healthcheck:

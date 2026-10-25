@@ -54,3 +54,11 @@ curl -X POST http://localhost:8000/api/v1/auth/login \
 curl http://localhost:8000/health
 curl http://localhost:8000/ready
 ```
+
+## Запуск через Docker Compose
+
+Для запуска производственного/демо стека:
+```bash
+docker compose --env-file .env up -d
+```
+Хранилища PostgreSQL и Redis изолированы внутри внутренней сети Docker Compose и не публикуют порты наружу. Для локального запуска тестов с хоста используется изолированный тестовый стек `compose.test.yml` (порты 5433 и 6380).
