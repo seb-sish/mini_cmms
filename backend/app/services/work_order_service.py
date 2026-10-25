@@ -96,6 +96,7 @@ class WorkOrderService:
 
                 if fault.status == FaultStatus.OPEN:
                     fault.status = FaultStatus.IN_PROGRESS
+                    fault.version += 1
                     session.add(fault)
 
         elif data.type == WorkOrderType.PLANNED:
@@ -495,6 +496,7 @@ class WorkOrderService:
             fault = await session.get(Fault, wo.fault_id)
             if fault and fault.status == FaultStatus.IN_PROGRESS:
                 fault.status = FaultStatus.OPEN
+                fault.version += 1
                 session.add(fault)
 
         wo.version += 1
@@ -584,8 +586,9 @@ class WorkOrderService:
 
         if wo.fault_id:
             fault = await session.get(Fault, wo.fault_id)
-            if fault:
+            if fault and fault.status != FaultStatus.RESOLVED:
                 fault.status = FaultStatus.RESOLVED
+                fault.version += 1
                 session.add(fault)
 
         schedule = None

@@ -147,7 +147,17 @@ class EquipmentService:
         payload: EquipmentPatch,
         current_user: User,
     ) -> Equipment:
-        eq = await self.get_equipment_by_id(equipment_id, current_user)
+        await self.get_equipment_by_id(equipment_id, current_user)
+        stmt = select(Equipment).where(Equipment.id == equipment_id).with_for_update()
+        res = await self.session.execute(stmt)
+        eq = res.scalar_one_or_none()
+        if eq is None:
+            raise AppException(
+                status=404,
+                code="NOT_FOUND",
+                title="Equipment Not Found",
+                detail=f"Equipment with id '{equipment_id}' does not exist.",
+            )
 
         if eq.archived_at is not None:
             raise AppException(

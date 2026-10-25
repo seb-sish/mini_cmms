@@ -83,7 +83,16 @@ class UserService:
         return user
 
     async def update_user(self, user_id: uuid.UUID, expected_version: int, payload: UserPatch) -> User:
-        user = await self.get_user_by_id(user_id)
+        stmt = select(User).where(User.id == user_id).with_for_update()
+        res = await self.session.execute(stmt)
+        user = res.scalar_one_or_none()
+        if user is None:
+            raise AppException(
+                status=404,
+                code="NOT_FOUND",
+                title="User Not Found",
+                detail=f"User with id '{user_id}' does not exist.",
+            )
         if user.version != expected_version:
             raise AppException(
                 status=412,

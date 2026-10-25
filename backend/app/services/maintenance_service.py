@@ -221,7 +221,17 @@ class MaintenanceService:
         await self.session.commit()
 
     async def update_plan(self, plan_id: uuid.UUID, expected_version: int, payload: MaintenancePlanUpdate) -> MaintenancePlan:
-        plan = await self.get_plan_by_id(plan_id)
+        await self.get_plan_by_id(plan_id)
+        stmt = select(MaintenancePlan).where(MaintenancePlan.id == plan_id).with_for_update()
+        res = await self.session.execute(stmt)
+        plan = res.scalar_one_or_none()
+        if plan is None:
+            raise AppException(
+                status=404,
+                code="NOT_FOUND",
+                title="Plan Not Found",
+                detail=f"Plan with id '{plan_id}' does not exist.",
+            )
         if plan.version != expected_version:
             raise AppException(
                 status=412,

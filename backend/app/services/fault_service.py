@@ -174,7 +174,17 @@ class FaultService:
         payload: FaultPatch,
         current_user: User,
     ) -> Fault:
-        fault = await self.get_fault_by_id(fault_id, current_user)
+        await self.get_fault_by_id(fault_id, current_user)
+        stmt = select(Fault).where(Fault.id == fault_id).with_for_update()
+        res = await self.session.execute(stmt)
+        fault = res.scalar_one_or_none()
+        if fault is None:
+            raise AppException(
+                status=404,
+                code="NOT_FOUND",
+                title="Fault Not Found",
+                detail=f"Fault with id '{fault_id}' does not exist.",
+            )
 
         # Only author (OPERATOR) or ENGINEER can update
         if current_user.role == UserRole.OPERATOR and fault.author_id != current_user.id:
