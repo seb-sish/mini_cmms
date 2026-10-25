@@ -5,14 +5,15 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator, model_validator
 
 from app.db.models.maintenance_plan import PlanScope
+from app.schemas.base import StrictDate, StrictInteger, Trimmed
 
 
 class ChecklistTemplateItemInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    title: str = Field(min_length=2, max_length=300, pattern=r"\S")
+    title: Trimmed(2, 300) = Field(pattern=r"\S")
     required: bool
-    order: int = Field(ge=0, le=999)
+    order: StrictInteger = Field(ge=0, le=999)
 
 
 # Backwards compatibility alias
@@ -23,9 +24,9 @@ class ChecklistTemplateItem(BaseModel):
     model_config = ConfigDict(from_attributes=True, extra="forbid")
 
     id: uuid.UUID
-    title: str = Field(min_length=2, max_length=300, pattern=r"\S")
+    title: Trimmed(2, 300) = Field(pattern=r"\S")
     required: bool
-    order: int = Field(ge=0, le=999)
+    order: StrictInteger = Field(ge=0, le=999)
 
     @model_validator(mode="before")
     @classmethod
@@ -42,12 +43,12 @@ class ChecklistTemplateItem(BaseModel):
 class MaintenancePlanCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    name: str = Field(min_length=2, max_length=200, pattern=r"\S")
+    name: Trimmed(2, 200) = Field(pattern=r"\S")
     scope: PlanScope
     equipment_id: uuid.UUID | None = None
-    category: str | None = Field(default=None, min_length=1, max_length=100, pattern=r"\S")
-    interval_days: int = Field(ge=1, le=3650)
-    first_due_on: date
+    category: Trimmed(1, 100) | None = Field(default=None, pattern=r"\S")
+    interval_days: StrictInteger = Field(ge=1, le=3650)
+    first_due_on: StrictDate
     checklist: list[ChecklistTemplateItemInput] = Field(min_length=1, max_length=100)
 
     @model_validator(mode="after")
@@ -68,8 +69,8 @@ class MaintenancePlanCreate(BaseModel):
 class MaintenancePlanPatch(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    name: str | None = Field(default=None, min_length=2, max_length=200, pattern=r"\S")
-    interval_days: int | None = Field(default=None, ge=1, le=3650)
+    name: Trimmed(2, 200) | None = Field(default=None, pattern=r"\S")
+    interval_days: StrictInteger | None = Field(default=None, ge=1, le=3650)
     enabled: bool | None = None
     checklist: list[ChecklistTemplateItemInput] | None = Field(default=None, min_length=1, max_length=100)
 

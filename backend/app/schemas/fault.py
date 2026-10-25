@@ -5,23 +5,24 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator, model_validator
 
 from app.db.models.fault import FaultSeverity, FaultStatus
+from app.schemas.base import StrictDate, Trimmed
 
 
 class FaultCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     equipment_id: uuid.UUID
-    description: str = Field(min_length=5, max_length=2000, pattern=r"\S")
-    detected_on: date
+    description: Trimmed(5, 2000) = Field(pattern=r"\S")
+    detected_on: StrictDate
     severity: FaultSeverity
 
 
 class FaultPatch(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    description: str | None = Field(default=None, min_length=5, max_length=2000, pattern=r"\S")
+    description: Trimmed(5, 2000) | None = Field(default=None, pattern=r"\S")
     severity: FaultSeverity | None = None
-    detected_on: date | None = None
+    detected_on: StrictDate | None = None
 
     @field_validator("description", "severity", "detected_on", mode="before")
     @classmethod

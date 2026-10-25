@@ -2,14 +2,15 @@ from datetime import UTC, datetime
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer
 
+from app.schemas.base import StrictText
 from app.schemas.user import UserRead
 
 
 class LoginRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    login: str = Field(min_length=3, max_length=64)
-    password: str = Field(min_length=8, max_length=128)
+    login: StrictText = Field(min_length=3, max_length=64)
+    password: StrictText = Field(min_length=8, max_length=128)
 
 
 class TokenResponse(BaseModel):

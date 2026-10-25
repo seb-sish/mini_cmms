@@ -5,13 +5,14 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator, model_validator
 
 from app.db.models.user import UserRole, UserStatus
+from app.schemas.base import StrictText, Trimmed
 
 
 class UserCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    login: str = Field(min_length=3, max_length=64, pattern=r"^[A-Za-z0-9_.-]+$")
-    password: str = Field(min_length=12, max_length=128)
+    login: Trimmed(3, 64) = Field(pattern=r"^[A-Za-z0-9_.-]+$")
+    password: StrictText = Field(min_length=12, max_length=128)
     role: UserRole
 
 
@@ -20,7 +21,7 @@ class UserPatch(BaseModel):
 
     role: UserRole | None = None
     status: UserStatus | None = None
-    new_password: str | None = Field(default=None, min_length=12, max_length=128)
+    new_password: StrictText | None = Field(default=None, min_length=12, max_length=128)
 
     @field_validator("role", mode="before")
     @classmethod

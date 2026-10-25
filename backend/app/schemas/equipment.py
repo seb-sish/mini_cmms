@@ -5,27 +5,28 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator, model_validator
 
 from app.db.models.equipment import EquipmentStatus
+from app.schemas.base import StrictDate, Trimmed
 
 
 class EquipmentCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    name: str = Field(min_length=1, max_length=200, pattern=r"\S")
-    inventory_number: str = Field(min_length=1, max_length=64, pattern=r"\S")
-    category: str = Field(min_length=1, max_length=100, pattern=r"\S")
-    location: str = Field(min_length=1, max_length=200, pattern=r"\S")
-    commissioned_on: date
+    name: Trimmed(1, 200) = Field(pattern=r"\S")
+    inventory_number: Trimmed(1, 64) = Field(pattern=r"\S")
+    category: Trimmed(1, 100) = Field(pattern=r"\S")
+    location: Trimmed(1, 200) = Field(pattern=r"\S")
+    commissioned_on: StrictDate
     status: EquipmentStatus
 
 
 class EquipmentPatch(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    name: str | None = Field(default=None, min_length=1, max_length=200, pattern=r"\S")
-    inventory_number: str | None = Field(default=None, min_length=1, max_length=64, pattern=r"\S")
-    category: str | None = Field(default=None, min_length=1, max_length=100, pattern=r"\S")
-    location: str | None = Field(default=None, min_length=1, max_length=200, pattern=r"\S")
-    commissioned_on: date | None = None
+    name: Trimmed(1, 200) | None = Field(default=None, pattern=r"\S")
+    inventory_number: Trimmed(1, 64) | None = Field(default=None, pattern=r"\S")
+    category: Trimmed(1, 100) | None = Field(default=None, pattern=r"\S")
+    location: Trimmed(1, 200) | None = Field(default=None, pattern=r"\S")
+    commissioned_on: StrictDate | None = None
     status: EquipmentStatus | None = None
 
     @field_validator("name", "inventory_number", "category", "location", "commissioned_on", "status", mode="before")

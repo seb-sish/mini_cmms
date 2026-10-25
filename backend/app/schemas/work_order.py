@@ -6,6 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_valid
 
 from app.db.models.work_order import WorkOrderPriority, WorkOrderStatus, WorkOrderType
 from app.db.models.work_order_event import WorkOrderEventType
+from app.schemas.base import Trimmed
 
 
 def _serialize_dt(dt: datetime | None) -> str | None:
@@ -68,8 +69,8 @@ class WorkOrderCreate(BaseModel):
     equipment_id: uuid.UUID
     fault_id: uuid.UUID | None = None
     schedule_id: uuid.UUID | None = None
-    title: str = Field(min_length=3, max_length=200, pattern=r"\S")
-    description: str = Field(min_length=5, max_length=2000, pattern=r"\S")
+    title: Trimmed(3, 200) = Field(pattern=r"\S")
+    description: Trimmed(5, 2000) = Field(pattern=r"\S")
     priority: WorkOrderPriority
 
     @model_validator(mode="after")
@@ -88,8 +89,8 @@ class WorkOrderCreate(BaseModel):
 class WorkOrderPatch(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    title: str | None = Field(default=None, min_length=3, max_length=200, pattern=r"\S")
-    description: str | None = Field(default=None, min_length=5, max_length=2000, pattern=r"\S")
+    title: Trimmed(3, 200) | None = Field(default=None, pattern=r"\S")
+    description: Trimmed(5, 2000) | None = Field(default=None, pattern=r"\S")
     priority: WorkOrderPriority | None = None
 
     @field_validator("title", "description", "priority", mode="before")
@@ -117,16 +118,8 @@ AssignRequest = WorkOrderAssign
 class WorkOrderComplete(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    result: str = Field(min_length=1, max_length=4000, pattern=r"\S")
-    replaced_parts: list[str] = Field(default_factory=list, max_length=100)
-
-    @field_validator("replaced_parts")
-    @classmethod
-    def validate_parts(cls, parts: list[str]) -> list[str]:
-        for p in parts:
-            if not p or not p.strip():
-                raise ValueError("replaced_parts items cannot be empty or whitespace-only")
-        return parts
+    result: Trimmed(1, 4000) = Field(pattern=r"\S")
+    replaced_parts: list[Trimmed(1, 200)] = Field(default_factory=list, max_length=100)
 
 
 class CancelWorkOrderRequest(BaseModel):
