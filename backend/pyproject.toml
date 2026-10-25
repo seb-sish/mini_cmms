@@ -29,12 +29,19 @@ dev = [
     "fakeredis[aioredis]>=2.25.0",
     "ruff>=0.6.0",
     "aiosqlite>=0.22.1",
+    "jsonschema[format]>=4.26.0",
+    "openapi-spec-validator>=0.9.0",
+    "pyyaml>=6.0.3",
 ]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
 pythonpath = ["."]
+markers = [
+    "integration: marks tests as integration tests that use real external services (PostgreSQL, Redis)",
+    "contract: marks tests as schema and contract conformance tests against OpenAPI spec",
+]
 
 [tool.ruff]
 line-length = 120
