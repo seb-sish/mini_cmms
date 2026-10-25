@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import math
 import time
 import uuid
@@ -17,6 +18,69 @@ else
 end
 """
 
+RENEW_LUA = """
+if redis.call("get", KEYS[1]) == ARGV[1] then
+    return redis.call("expire", KEYS[1], ARGV[2])
+else
+    return 0
+end
+"""
+
+
+class LockGuard:
+    """Состояние владения распределёнными блокировками.
+
+    Пока lease продлевается, владение не теряется. Если блокировка была
+    потеряна (например, из-за паузы длиннее lease), guard помечает это,
+    и защищённый участок должен быть прерван до необратимых действий.
+    """
+
+    def __init__(self) -> None:
+        self.lost = False
+
+    def check(self) -> None:
+        if self.lost:
+            raise AppException(
+                status=503,
+                code="SERVICE_UNAVAILABLE",
+                title="Service Unavailable",
+                detail="Rate limit lock lease was lost; operation aborted.",
+            )
+
+
+async def _renew_leases(
+    redis_client: aioredis.Redis,
+    acquired: list[tuple[str, str]],
+    lease: float,
+    guard: LockGuard,
+) -> None:
+    """Продлевает lease удерживаемых блокировок и фиксирует потерю владения."""
+    ttl = int(math.ceil(lease))
+    interval = max(0.5, lease / 3)
+    while True:
+        await asyncio.sleep(interval)
+        for lock_name, owner in list(acquired):
+            renewed: int | None = None
+            try:
+                renewed = int(await redis_client.eval(RENEW_LUA, 1, lock_name, owner, ttl))
+            except Exception:
+                # Fallback для окружений без Lua (например, FakeRedis).
+                try:
+                    val = await redis_client.get(lock_name)
+                    if isinstance(val, bytes):
+                        val = val.decode()
+                    if val == owner:
+                        await redis_client.expire(lock_name, ttl)
+                        renewed = 1
+                    else:
+                        # Ключ исчез или принадлежит другому владельцу — владение потеряно.
+                        renewed = 0
+                except Exception:
+                    renewed = None
+            if renewed == 0:
+                guard.lost = True
+                return
+
 
 @asynccontextmanager
 async def acquire_rate_limit_locks(
@@ -24,13 +88,18 @@ async def acquire_rate_limit_locks(
     keys: list[str],
     timeout: float = 10.0,
     lease: float = 10.0,
-) -> AsyncIterator[None]:
+) -> AsyncIterator[LockGuard]:
     """
     Acquire distributed locks for multiple keys in stable sorted order.
     Ensures safe, deadlock-free serialization across distributed API workers.
+
+    Lease продлевается, пока защищённый участок выполняется, поэтому
+    длительная операция не допускает второго захвата блокировки.
     """
     unique_keys = sorted(list(set(keys)))
     acquired: list[tuple[str, str]] = []
+    guard = LockGuard()
+    renew_task: asyncio.Task | None = None
     start_time = time.time()
 
     try:
@@ -41,6 +110,8 @@ async def acquire_rate_limit_locks(
                 ok = await redis_client.set(lock_name, owner, nx=True, ex=int(math.ceil(lease)))
                 if ok:
                     acquired.append((lock_name, owner))
+                    if renew_task is None:
+                        renew_task = asyncio.create_task(_renew_leases(redis_client, acquired, lease, guard))
                     break
                 if time.time() - start_time > timeout:
                     raise AppException(
@@ -50,8 +121,12 @@ async def acquire_rate_limit_locks(
                         detail="Timeout waiting for rate limit lock.",
                     )
                 await asyncio.sleep(0.02)
-        yield
+        yield guard
     finally:
+        if renew_task is not None:
+            renew_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await renew_task
         for lock_name, owner in reversed(acquired):
             try:
                 # Primary atomic release via Lua script (Redis production/integration)

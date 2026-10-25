@@ -23,7 +23,11 @@ class AuthService:
         ip_key = f"ip:{client_ip}"
         login_key = f"login:{norm_login}"
 
-        async with acquire_rate_limit_locks(self.redis, [ip_key, login_key]):
+        async with acquire_rate_limit_locks(self.redis, [ip_key, login_key]) as guard:
+            # Владение блокировкой проверяется до необратимых действий:
+            # потеря lease означает, что счётчик мог быть учтён дважды.
+            guard.check()
+
             # Check rate limits for both IP and login
             retry_ip = await check_rate_limit(
                 self.redis,
@@ -51,6 +55,8 @@ class AuthService:
             stmt = locked(select(User).where(func.lower(User.login) == norm_login))
             result = await self.session.execute(stmt)
             user: User | None = result.scalar_one_or_none()
+
+            guard.check()
 
             # Check credentials and status (BLOCKED returns same 401 INVALID_CREDENTIALS per spec Q5)
             if user is None or user.status != UserStatus.ACTIVE or not verify_password(password, user.password_hash):
