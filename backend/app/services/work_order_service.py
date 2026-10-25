@@ -711,8 +711,11 @@ class WorkHistoryService:
         if not wh:
             raise AppException(404, "NOT_FOUND", "Work history entry not found")
 
-        if current_user.role == UserRole.TECHNICIAN and wh.technician_id != current_user.id:
-            raise AppException(404, "NOT_FOUND", "Work history entry not found")
+        if current_user.role == UserRole.TECHNICIAN:
+            if wh.technician_id != current_user.id:
+                wo = await session.get(WorkOrder, wh.work_order_id)
+                if not wo or wo.assignee_id != current_user.id:
+                    raise AppException(404, "NOT_FOUND", "Work history entry not found")
         elif current_user.role == UserRole.OPERATOR:
             wo = await session.get(WorkOrder, wh.work_order_id)
             if not wo or wo.author_id != current_user.id:
