@@ -1,12 +1,23 @@
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from typing import Any, Optional
 import uuid
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator, model_validator
 from app.db.models.work_order import WorkOrderPriority, WorkOrderStatus, WorkOrderType
 from app.db.models.work_order_event import WorkOrderEventType
 
+
+def _serialize_dt(dt: Optional[datetime]) -> Optional[str]:
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    else:
+        dt = dt.astimezone(timezone.utc)
+    return dt.isoformat().replace("+00:00", "Z")
+
+
 class WorkChecklistItemRead(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, extra="forbid")
 
     id: uuid.UUID
     title: str
@@ -16,17 +27,47 @@ class WorkChecklistItemRead(BaseModel):
     comment: Optional[str] = None
     checked_at: Optional[datetime] = None
 
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_fields(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            item_id = data.get("id") or uuid.uuid4()
+            title = data.get("title") or data.get("description", "")
+            req = data.get("required") if data.get("required") is not None else data.get("is_required", True)
+            order = data.get("order", 0)
+            checked = data.get("checked") if data.get("checked") is not None else data.get("is_done", False)
+            return {
+                "id": item_id,
+                "title": title,
+                "required": req,
+                "order": order,
+                "checked": checked,
+                "comment": data.get("comment"),
+                "checked_at": data.get("checked_at"),
+            }
+        return data
+
+    @field_serializer("checked_at")
+    def serialize_checked_at(self, dt: Optional[datetime], _info) -> Optional[str]:
+        return _serialize_dt(dt)
+
+
 class ChecklistItemUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     checked: bool
-    comment: Optional[str] = None
+    comment: Optional[str] = Field(default=None, max_length=1000)
+
 
 class WorkOrderCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     type: WorkOrderType
     equipment_id: uuid.UUID
     fault_id: Optional[uuid.UUID] = None
     schedule_id: Optional[uuid.UUID] = None
-    title: str = Field(min_length=3, max_length=200)
-    description: str = Field(min_length=5, max_length=2000)
+    title: str = Field(min_length=3, max_length=200, pattern=r"\S")
+    description: str = Field(min_length=5, max_length=2000, pattern=r"\S")
     priority: WorkOrderPriority
 
     @model_validator(mode="after")
@@ -41,10 +82,20 @@ class WorkOrderCreate(BaseModel):
                 raise ValueError("fault_id is forbidden for PLANNED work orders")
         return self
 
+
 class WorkOrderPatch(BaseModel):
-    title: Optional[str] = Field(default=None, min_length=3, max_length=200)
-    description: Optional[str] = Field(default=None, min_length=5, max_length=2000)
+    model_config = ConfigDict(extra="forbid")
+
+    title: Optional[str] = Field(default=None, min_length=3, max_length=200, pattern=r"\S")
+    description: Optional[str] = Field(default=None, min_length=5, max_length=2000, pattern=r"\S")
     priority: Optional[WorkOrderPriority] = None
+
+    @field_validator("title", "description", "priority", mode="before")
+    @classmethod
+    def validate_not_null(cls, v: Any) -> Any:
+        if v is None:
+            raise ValueError("Field cannot be null")
+        return v
 
     @model_validator(mode="after")
     def validate_not_empty(self) -> "WorkOrderPatch":
@@ -52,18 +103,38 @@ class WorkOrderPatch(BaseModel):
             raise ValueError("At least one field must be provided in PATCH")
         return self
 
+
 class WorkOrderAssign(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     assignee_id: uuid.UUID
 
+
+AssignRequest = WorkOrderAssign
+
+
 class WorkOrderComplete(BaseModel):
-    result: str = Field(min_length=1, max_length=4000)
+    model_config = ConfigDict(extra="forbid")
+
+    result: str = Field(min_length=1, max_length=4000, pattern=r"\S")
     replaced_parts: list[str] = Field(default_factory=list, max_length=100)
 
+    @field_validator("replaced_parts")
+    @classmethod
+    def validate_parts(cls, parts: list[str]) -> list[str]:
+        for p in parts:
+            if not p or not p.strip():
+                raise ValueError("replaced_parts items cannot be empty or whitespace-only")
+        return parts
+
+
 class CancelWorkOrderRequest(BaseModel):
-    reason: str = Field(min_length=1, max_length=1000)
+    model_config = ConfigDict(extra="forbid")
+
+    reason: str = Field(min_length=1, max_length=1000, pattern=r"\S")
+
 
 class WorkOrderRead(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, extra="forbid")
 
     id: uuid.UUID
     number: str
@@ -90,14 +161,26 @@ class WorkOrderRead(BaseModel):
     cancelled_by: Optional[uuid.UUID] = None
     cancellation_reason: Optional[str] = None
 
+    @field_serializer("created_at", "updated_at")
+    def serialize_req_datetime(self, dt: datetime, _info) -> str:
+        res = _serialize_dt(dt)
+        assert res is not None
+        return res
+
+    @field_serializer("completed_at", "closed_at", "cancelled_at")
+    def serialize_opt_datetime(self, dt: Optional[datetime], _info) -> Optional[str]:
+        return _serialize_dt(dt)
+
+
 class WorkOrderPage(BaseModel):
     items: list[WorkOrderRead]
     total: int
     limit: int
     offset: int
 
+
 class WorkOrderEventRead(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, extra="forbid")
 
     id: uuid.UUID
     work_order_id: uuid.UUID
@@ -110,14 +193,22 @@ class WorkOrderEventRead(BaseModel):
     new_assignee_id: Optional[uuid.UUID] = None
     details: Optional[str] = None
 
+    @field_serializer("occurred_at")
+    def serialize_occurred_at(self, dt: datetime, _info) -> str:
+        res = _serialize_dt(dt)
+        assert res is not None
+        return res
+
+
 class WorkOrderEventPage(BaseModel):
     items: list[WorkOrderEventRead]
     total: int
     limit: int
     offset: int
 
+
 class WorkHistoryRead(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, extra="forbid")
 
     id: uuid.UUID
     work_order_id: uuid.UUID
@@ -130,6 +221,13 @@ class WorkHistoryRead(BaseModel):
     result: str
     replaced_parts: list[str] = Field(default_factory=list)
     created_at: datetime
+
+    @field_serializer("completed_at", "closed_at", "created_at")
+    def serialize_history_datetime(self, dt: datetime, _info) -> str:
+        res = _serialize_dt(dt)
+        assert res is not None
+        return res
+
 
 class WorkHistoryPage(BaseModel):
     items: list[WorkHistoryRead]

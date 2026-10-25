@@ -32,6 +32,7 @@ class EquipmentService:
         offset: int = 0,
         status_filter: Optional[EquipmentStatus] = None,
         category: Optional[str] = None,
+        location: Optional[str] = None,
         include_archived: bool = False,
         q: Optional[str] = None,
     ) -> tuple[list[Equipment], int]:
@@ -57,6 +58,10 @@ class EquipmentService:
         if category is not None and category.strip():
             stmt = stmt.where(Equipment.category == category.strip())
             count_stmt = count_stmt.where(Equipment.category == category.strip())
+
+        if location is not None and location.strip():
+            stmt = stmt.where(Equipment.location == location.strip())
+            count_stmt = count_stmt.where(Equipment.location == location.strip())
 
         if q is not None and q.strip():
             escaped = f"%{escape_like(q.strip().lower())}%"

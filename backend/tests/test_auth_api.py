@@ -9,10 +9,10 @@ async def test_login_success_and_logout(async_client: AsyncClient, db_session: A
     res = await async_client.post("/api/v1/auth/login", json={"login": "admin", "password": "Password123!"})
     assert res.status_code == 200
     data = res.json()
-    assert "token" in data
+    assert "access_token" in data
     assert "expires_at" in data
     assert data["user"]["login"] == "admin"
-    token = data["token"]
+    token = data["access_token"]
     
     # Get Me
     me_res = await async_client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {token}"})

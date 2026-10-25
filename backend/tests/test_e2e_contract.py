@@ -29,7 +29,7 @@ async def test_full_acceptance_flows(async_client: AsyncClient, db_session: Asyn
         json={"login": "global_admin", "password": "AdminPass123!"},
     )
     assert login_res.status_code == 200
-    admin_token = login_res.json()["token"]
+    admin_token = login_res.json()["access_token"]
     admin_headers = {"Authorization": f"Bearer {admin_token}"}
 
     # 1.2 Verify /me
@@ -44,7 +44,6 @@ async def test_full_acceptance_flows(async_client: AsyncClient, db_session: Asyn
         json={
             "login": "eng_flow",
             "password": "Password123!",
-            "full_name": "Lead Engineer",
             "role": "ENGINEER",
         },
     )
@@ -57,7 +56,6 @@ async def test_full_acceptance_flows(async_client: AsyncClient, db_session: Asyn
         json={
             "login": "tech_flow",
             "password": "Password123!",
-            "full_name": "Field Technician",
             "role": "TECHNICIAN",
         },
     )
@@ -70,7 +68,6 @@ async def test_full_acceptance_flows(async_client: AsyncClient, db_session: Asyn
         json={
             "login": "op_flow",
             "password": "Password123!",
-            "full_name": "Line Operator",
             "role": "OPERATOR",
         },
     )
@@ -79,13 +76,13 @@ async def test_full_acceptance_flows(async_client: AsyncClient, db_session: Asyn
 
     # 1.4 Log in as each user
     eng_login = await async_client.post("/api/v1/auth/login", json={"login": "eng_flow", "password": "Password123!"})
-    eng_headers = {"Authorization": f"Bearer {eng_login.json()['token']}"}
+    eng_headers = {"Authorization": f"Bearer {eng_login.json()['access_token']}"}
 
     tech_login = await async_client.post("/api/v1/auth/login", json={"login": "tech_flow", "password": "Password123!"})
-    tech_headers = {"Authorization": f"Bearer {tech_login.json()['token']}"}
+    tech_headers = {"Authorization": f"Bearer {tech_login.json()['access_token']}"}
 
     op_login = await async_client.post("/api/v1/auth/login", json={"login": "op_flow", "password": "Password123!"})
-    op_headers = {"Authorization": f"Bearer {op_login.json()['token']}"}
+    op_headers = {"Authorization": f"Bearer {op_login.json()['access_token']}"}
 
     # =========================================================================
     # FLOW 2: Equipment & Fault & Repair Work Order
@@ -192,15 +189,14 @@ async def test_full_acceptance_flows(async_client: AsyncClient, db_session: Asyn
         headers=eng_headers,
         json={
             "name": "Quarterly Pump Maintenance",
-            "description": "Scheduled inspection and oil change",
             "interval_days": 30,
             "first_due_on": str(today),
             "scope": "EQUIPMENT",
             "equipment_id": eq_id,
             "checklist": [
-                {"order": 1, "description": "Check oil level and quality", "is_required": True},
-                {"order": 2, "description": "Clean intake filter", "is_required": True},
-                {"order": 3, "description": "Inspect paint coating", "is_required": False},
+                {"order": 1, "title": "Check oil level and quality", "required": True},
+                {"order": 2, "title": "Clean intake filter", "required": True},
+                {"order": 3, "title": "Inspect paint coating", "required": False},
             ],
         },
     )

@@ -6,8 +6,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.security import hash_password
 from app.db.models.user import User, UserRole, UserStatus
 from app.errors.exceptions import AppException
-from app.schemas.user import PasswordUpdate, StatusUpdate, UserCreate, UserPatch, UserUpdate
+from app.schemas.user import PasswordUpdate, StatusUpdate, UserCreate, UserPatch
 from app.services.auth_service import AuthService
+
 
 class UserService:
     def __init__(self, session: AsyncSession, auth_service: Optional[AuthService] = None) -> None:
@@ -18,6 +19,7 @@ class UserService:
         self,
         role: Optional[UserRole] = None,
         status: Optional[UserStatus] = None,
+        q: Optional[str] = None,
         limit: int = 20,
         offset: int = 0,
     ) -> tuple[list[User], int]:
@@ -30,6 +32,9 @@ class UserService:
         if status is not None:
             query = query.where(User.status == status)
             count_query = count_query.where(User.status == status)
+        if q is not None and q.strip():
+            query = query.where(User.login.ilike(f"%{q.strip()}%"))
+            count_query = count_query.where(User.login.ilike(f"%{q.strip()}%"))
 
         total = (await self.session.execute(count_query)).scalar_one()
 
@@ -69,7 +74,6 @@ class UserService:
         user = User(
             login=payload.login.strip(),
             password_hash=hash_password(payload.password),
-            full_name=payload.full_name.strip() if payload.full_name else None,
             role=payload.role,
             status=UserStatus.ACTIVE,
         )
@@ -155,11 +159,6 @@ class UserService:
             if self.auth_service:
                 await self.auth_service.revoke_all_user_sessions(user_id)
 
-        # 4. Optional full name update
-        if payload.full_name is not None and payload.full_name.strip() != (user.full_name or ""):
-            user.full_name = payload.full_name.strip()
-            has_changes = True
-
         if has_changes:
             user.version += 1
             await self.session.commit()
@@ -195,13 +194,12 @@ class UserService:
                     detail="Cannot block or demote the last active administrator.",
                 )
 
-        if user.status != payload.status:
-            user.status = payload.status
-            user.version += 1
-            await self.session.commit()
-            await self.session.refresh(user)
+        user.status = payload.status
+        user.version += 1
+        await self.session.commit()
+        await self.session.refresh(user)
 
-            if payload.status == UserStatus.BLOCKED and self.auth_service:
-                await self.auth_service.revoke_all_user_sessions(user_id)
+        if payload.status == UserStatus.BLOCKED and self.auth_service:
+            await self.auth_service.revoke_all_user_sessions(user_id)
 
         return user

@@ -58,13 +58,13 @@ async def test_create_plan_creates_schedules(async_client: AsyncClient, engineer
         "interval_days": 30,
         "first_due_on": "2026-11-01",
         "checklist": [
-            {"order": 1, "description": "Check oil level and pressure", "is_required": True}
+            {"order": 1, "title": "Check oil level and pressure", "required": True}
         ]
     })
     assert res.status_code == 201
     plan = res.json()
     assert plan["name"] == "Monthly Press Inspection"
-    assert plan["is_active"] is True
+    assert plan["enabled"] is True
     assert plan["version"] == 1
     assert len(plan["checklist"]) == 1
 
@@ -75,4 +75,4 @@ async def test_create_plan_creates_schedules(async_client: AsyncClient, engineer
     assert len(items) == 1
     assert items[0]["equipment_id"] == str(sample_equipment.id)
     assert items[0]["next_due_on"] == "2026-11-01"
-    assert items[0]["is_active"] is True
+    assert items[0]["active"] is True

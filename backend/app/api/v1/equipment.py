@@ -35,6 +35,7 @@ async def list_equipment(
         offset=offset,
         status_filter=status_filter,
         category=category,
+        location=location,
         include_archived=effective_archived,
         q=q,
     )

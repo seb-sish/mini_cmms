@@ -1,14 +1,14 @@
 from typing import Annotated, Optional
 import uuid
-from fastapi import APIRouter, Depends, Header, Response, status
+from fastapi import APIRouter, Depends, Header, Query, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 import redis.asyncio as aioredis
 
-from app.api.dependencies import get_current_user, get_redis, parse_if_match_version, require_role
+from app.api.dependencies import get_redis, parse_if_match_version, require_role
 from app.db.models.user import User, UserRole, UserStatus
 from app.db.session import get_session
 from app.schemas.common import PaginatedResponse
-from app.schemas.user import PasswordUpdate, StatusUpdate, UserCreate, UserPatch, UserRead, UserUpdate
+from app.schemas.user import PasswordUpdate, StatusUpdate, UserCreate, UserPatch, UserRead
 from app.services.auth_service import AuthService
 from app.services.user_service import UserService
 
@@ -20,11 +20,12 @@ async def list_users(
     admin_user: Annotated[User, Depends(require_role("ADMIN"))],
     role: Optional[UserRole] = None,
     status: Optional[UserStatus] = None,
-    limit: int = 20,
-    offset: int = 0,
+    q: Optional[str] = Query(default=None, min_length=1, max_length=64),
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
 ) -> PaginatedResponse:
     service = UserService(db)
-    users, total = await service.list_users(role=role, status=status, limit=limit, offset=offset)
+    users, total = await service.list_users(role=role, status=status, q=q, limit=limit, offset=offset)
     return PaginatedResponse(
         items=[UserRead.model_validate(u) for u in users],
         total=total,
@@ -42,6 +43,7 @@ async def create_user(
     service = UserService(db)
     user = await service.create_user(payload)
     response.headers["ETag"] = f'"{user.id}:{user.version}"'
+    response.headers["Location"] = f"/api/v1/users/{user.id}"
     return UserRead.model_validate(user)
 
 @users_router.get("/{user_id}", response_model=UserRead)

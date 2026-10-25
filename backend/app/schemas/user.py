@@ -1,42 +1,69 @@
-from datetime import datetime
-from typing import Optional
+from datetime import datetime, timezone
+from typing import Any, Optional
 import uuid
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator, model_validator
 from app.db.models.user import UserRole, UserStatus
 
+
 class UserCreate(BaseModel):
-    model_config = ConfigDict(extra="ignore")
+    model_config = ConfigDict(extra="forbid")
 
     login: str = Field(min_length=3, max_length=64, pattern=r"^[A-Za-z0-9_.-]+$")
     password: str = Field(min_length=12, max_length=128)
     role: UserRole
-    full_name: Optional[str] = Field(default=None, max_length=100)
+
 
 class UserPatch(BaseModel):
-    model_config = ConfigDict(extra="ignore")
+    model_config = ConfigDict(extra="forbid")
 
     role: Optional[UserRole] = None
     status: Optional[UserStatus] = None
     new_password: Optional[str] = Field(default=None, min_length=12, max_length=128)
-    full_name: Optional[str] = Field(default=None, min_length=1, max_length=100)
+
+    @field_validator("role", mode="before")
+    @classmethod
+    def validate_role(cls, v: Any) -> Any:
+        if v is None:
+            raise ValueError("Role cannot be null")
+        return v
+
+    @field_validator("status", mode="before")
+    @classmethod
+    def validate_status(cls, v: Any) -> Any:
+        if v is None:
+            raise ValueError("Status cannot be null")
+        return v
+
+    @field_validator("new_password", mode="before")
+    @classmethod
+    def validate_new_password(cls, v: Any) -> Any:
+        if v is None:
+            raise ValueError("New password cannot be null")
+        return v
 
     @model_validator(mode="after")
     def validate_at_least_one(self) -> "UserPatch":
-        if self.role is None and self.status is None and self.new_password is None and self.full_name is None:
+        if self.role is None and self.status is None and self.new_password is None:
             raise ValueError("At least one property must be specified in PATCH")
         return self
+
 
 # Backwards compatibility aliases
 UserUpdate = UserPatch
 
+
 class PasswordUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     password: str = Field(min_length=12, max_length=128)
 
+
 class StatusUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     status: UserStatus
 
+
 class UserRead(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, extra="forbid")
 
     id: uuid.UUID
     login: str
@@ -45,4 +72,11 @@ class UserRead(BaseModel):
     version: int
     created_at: datetime
     updated_at: datetime
-    full_name: Optional[str] = None
+
+    @field_serializer("created_at", "updated_at")
+    def serialize_datetime(self, dt: datetime, _info) -> str:
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        else:
+            dt = dt.astimezone(timezone.utc)
+        return dt.isoformat().replace("+00:00", "Z")

@@ -90,12 +90,10 @@ async def test_maintenance_plan_and_schedule_contract_fields(
     # 1. Create plan with OpenAPI schema (title, required, order, enabled)
     payload = {
         "name": "Lathe Monthly Service",
-        "description": "Monthly routine inspection",
         "scope": "EQUIPMENT",
         "equipment_id": str(sample_press.id),
         "interval_days": 30,
         "first_due_on": "2026-11-15",
-        "enabled": True,
         "checklist": [
             {"order": 1, "title": "Check spindle lubrication", "required": True},
             {"order": 2, "title": "Clean chip conveyor", "required": False},

@@ -1,5 +1,6 @@
 from collections.abc import AsyncIterator
 from datetime import datetime, timezone
+import re
 from typing import Annotated, Callable, Optional
 from fastapi import Depends, Header, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -103,6 +104,10 @@ def require_role(*roles: str) -> Callable[[User], User]:
         return user
     return role_checker
 
+IF_MATCH_REGEX = re.compile(
+    r'^"([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}):([1-9][0-9]*)"$'
+)
+
 def parse_if_match_version(if_match: Optional[str], expected_id: str) -> int:
     if not if_match:
         raise AppException(
@@ -112,24 +117,15 @@ def parse_if_match_version(if_match: Optional[str], expected_id: str) -> int:
             detail="If-Match header is required for updates.",
         )
     raw = if_match.strip()
-    if raw.startswith("W/") or raw == "*" or "," in raw:
+    match = IF_MATCH_REGEX.match(raw)
+    if not match:
         raise AppException(
             status=422,
             code="VALIDATION_ERROR",
             title="Validation Error",
-            detail="Weak ETags, wildcards and multiple tags are not supported in If-Match.",
+            detail="If-Match header must match format '\"<uuid>:<version>\"' with valid UUID and positive integer version without leading zeros.",
         )
-
-    clean = raw.strip('"')
-    parts = clean.split(":")
-    if len(parts) != 2:
-        raise AppException(
-            status=422,
-            code="VALIDATION_ERROR",
-            title="Validation Error",
-            detail="If-Match header must have format '\"<uuid>:<version>\"'.",
-        )
-    resource_id, ver_str = parts
+    resource_id, ver_str = match.group(1), match.group(2)
     if resource_id.lower() != expected_id.lower():
         raise AppException(
             status=412,
@@ -137,12 +133,4 @@ def parse_if_match_version(if_match: Optional[str], expected_id: str) -> int:
             title="Version Conflict",
             detail="If-Match resource ID does not match target URL.",
         )
-    try:
-        return int(ver_str)
-    except ValueError:
-        raise AppException(
-            status=422,
-            code="VALIDATION_ERROR",
-            title="Validation Error",
-            detail="Version part of If-Match header must be an integer.",
-        )
+    return int(ver_str)

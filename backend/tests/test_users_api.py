@@ -38,7 +38,6 @@ async def test_user_management_lifecycle_and_etag(async_client: AsyncClient, adm
     res = await async_client.post("/api/v1/users", headers=headers, json={
         "login": "tech_ivan",
         "password": "Password123!",
-        "full_name": "Ivan Ivanov",
         "role": "TECHNICIAN"
     })
     assert res.status_code == 201
@@ -49,7 +48,7 @@ async def test_user_management_lifecycle_and_etag(async_client: AsyncClient, adm
     etag = res.headers["ETag"]
 
     # Patch user without If-Match -> 428
-    no_etag_res = await async_client.patch(f"/api/v1/users/{u_id}", headers=headers, json={"full_name": "Ivan S. Ivanov"})
+    no_etag_res = await async_client.patch(f"/api/v1/users/{u_id}", headers=headers, json={"role": "ENGINEER"})
     assert no_etag_res.status_code == 428
     assert no_etag_res.json()["code"] == "PRECONDITION_REQUIRED"
 
@@ -57,11 +56,11 @@ async def test_user_management_lifecycle_and_etag(async_client: AsyncClient, adm
     patch_res = await async_client.patch(
         f"/api/v1/users/{u_id}",
         headers={**headers, "If-Match": etag},
-        json={"full_name": "Ivan S. Ivanov"}
+        json={"role": "ENGINEER"}
     )
     assert patch_res.status_code == 200
     assert patch_res.json()["version"] == 2
-    assert patch_res.json()["full_name"] == "Ivan S. Ivanov"
+    assert patch_res.json()["role"] == "ENGINEER"
 
 @pytest.mark.asyncio
 async def test_create_duplicate_user_returns_409_login_already_exists(async_client: AsyncClient, admin_auth):

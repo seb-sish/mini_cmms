@@ -43,16 +43,16 @@ def validate_checklist_items(checklist: list[ChecklistItemTemplate]) -> list[dic
                 detail=f"Checklist item title '{item_title}' is duplicated.",
             )
         seen_titles.add(norm_title.lower())
-        item_id = str(item.id) if item.id else str(uuid.uuid4())
-        is_req = item.required if item.required is not None else (item.is_required if item.is_required is not None else True)
+        raw_id = getattr(item, 'id', None)
+        item_id = str(raw_id) if raw_id else str(uuid.uuid4())
+        is_req = getattr(item, 'required', None)
+        if is_req is None:
+            is_req = getattr(item, 'is_required', True)
         cleaned.append({
             "id": item_id,
             "order": item.order,
             "title": norm_title,
             "required": is_req,
-            # Legacy compatibility
-            "description": norm_title,
-            "is_required": is_req,
         })
     cleaned.sort(key=lambda x: x["order"])
     return cleaned
@@ -140,13 +140,16 @@ class MaintenanceService:
         company_today = get_company_today()
         cleaned_checklist = validate_checklist_items(payload.checklist)
 
-        enabled = payload.enabled if payload.enabled is not None else (
-            payload.is_active if payload.is_active is not None else True
-        )
+        enabled = getattr(payload, 'enabled', None)
+        if enabled is None:
+            enabled = getattr(payload, 'is_active', True)
+        if enabled is None:
+            enabled = True
 
+        desc = getattr(payload, 'description', None)
         plan = MaintenancePlan(
             name=payload.name.strip(),
-            description=payload.description.strip() if payload.description else None,
+            description=desc.strip() if desc else None,
             scope=payload.scope,
             equipment_id=payload.equipment_id,
             category=payload.category.strip() if payload.category else None,
@@ -231,8 +234,9 @@ class MaintenanceService:
         if payload.name is not None and payload.name.strip() != plan.name:
             plan.name = payload.name.strip()
             has_changes = True
-        if payload.description is not None:
-            clean_desc = payload.description.strip() if payload.description else None
+        desc = getattr(payload, 'description', None)
+        if desc is not None:
+            clean_desc = desc.strip() if desc else None
             if clean_desc != plan.description:
                 plan.description = clean_desc
                 has_changes = True
@@ -241,7 +245,9 @@ class MaintenanceService:
             plan.checklist = validate_checklist_items(payload.checklist)
             has_changes = True
 
-        new_enabled = payload.enabled if payload.enabled is not None else payload.is_active
+        new_enabled = getattr(payload, 'enabled', None)
+        if new_enabled is None:
+            new_enabled = getattr(payload, 'is_active', None)
         if new_enabled is not None and new_enabled != plan.is_active:
             plan.is_active = new_enabled
             has_changes = True
