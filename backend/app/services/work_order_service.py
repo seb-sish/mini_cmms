@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.config import settings
-from app.db.base import locked
+from app.db.base import locked, pairing_lock
 from app.db.models.equipment import Equipment
 from app.db.models.fault import Fault, FaultStatus
 from app.db.models.maintenance_plan import MaintenancePlan
@@ -94,7 +94,8 @@ class WorkOrderService:
             if data.schedule_id is not None:
                 raise AppException(422, "VALIDATION_ERROR", "schedule_id forbidden for REPAIR")
 
-            equipment = await session.get(Equipment, data.equipment_id)
+            equipment_stmt = locked(select(Equipment).where(Equipment.id == data.equipment_id))
+            equipment = (await session.execute(equipment_stmt)).scalar_one_or_none()
             if not equipment:
                 raise AppException(404, "NOT_FOUND", "Equipment not found")
             if equipment.archived_at is not None:
@@ -127,6 +128,8 @@ class WorkOrderService:
                     raise AppException(409, "DUPLICATE_ACTIVE_WORK_ORDER", "Active work order exists for this fault")
 
         elif data.type == WorkOrderType.PLANNED:
+            # Согласование пар Equipment <-> Schedule <-> Plan сериализуется advisory-блокировкой.
+            await pairing_lock(session)
             if data.schedule_id is None:
                 raise AppException(422, "VALIDATION_ERROR", "schedule_id required for PLANNED")
             if data.fault_id is not None:
@@ -146,10 +149,7 @@ class WorkOrderService:
 
             plan_id = sched_pre[0]
 
-            # Canonical lock order: Plan -> Equipment -> Schedule
-            plan_stmt = locked(select(MaintenancePlan).where(MaintenancePlan.id == plan_id))
-            plan = (await session.execute(plan_stmt)).scalar_one_or_none()
-
+            # Канонический порядок блокировок: Equipment -> Schedule -> Plan.
             eq_stmt = locked(select(Equipment).where(Equipment.id == data.equipment_id))
             equipment = (await session.execute(eq_stmt)).scalar_one_or_none()
             if not equipment:
@@ -159,6 +159,9 @@ class WorkOrderService:
 
             sched_stmt = locked(select(MaintenanceSchedule).where(MaintenanceSchedule.id == data.schedule_id))
             schedule = (await session.execute(sched_stmt)).scalar_one_or_none()
+
+            plan_stmt = locked(select(MaintenancePlan).where(MaintenancePlan.id == plan_id))
+            plan = (await session.execute(plan_stmt)).scalar_one_or_none()
 
             if not plan or not plan.is_active or not schedule or not schedule.is_active:
                 raise AppException(409, "INACTIVE_MAINTENANCE_SCHEDULE", "Schedule or plan is inactive")
@@ -678,24 +681,24 @@ class WorkOrderService:
             raise AppException(404, "NOT_FOUND", "Work order not found")
         wo_type, schedule_id, fault_id, equipment_id = meta
 
-        if wo_type == WorkOrderType.PLANNED and schedule_id:
-            sched_meta = (
-                await session.execute(select(MaintenanceSchedule.plan_id).where(MaintenanceSchedule.id == schedule_id))
-            ).first()
-            if sched_meta and sched_meta[0]:
-                await session.execute(locked(select(MaintenancePlan).where(MaintenancePlan.id == sched_meta[0])))
-            if equipment_id:
-                await session.execute(locked(select(Equipment).where(Equipment.id == equipment_id)))
-            await session.execute(locked(select(MaintenanceSchedule).where(MaintenanceSchedule.id == schedule_id)))
-        elif wo_type == WorkOrderType.REPAIR:
-            if equipment_id:
-                await session.execute(locked(select(Equipment).where(Equipment.id == equipment_id)))
-            if fault_id:
-                await session.execute(locked(select(Fault).where(Fault.id == fault_id)))
+        # Канонический порядок блокировок: Equipment -> WorkOrder -> Fault -> Schedule -> Plan.
+        if equipment_id:
+            await session.execute(locked(select(Equipment).where(Equipment.id == equipment_id)))
 
         wo = await cls.get_work_order_for_update(session, work_order_id)
         if wo.status != WorkOrderStatus.COMPLETED:
             raise AppException(409, "INVALID_WORK_ORDER_STATE", "Work order must be COMPLETED to close")
+
+        if fault_id:
+            await session.execute(locked(select(Fault).where(Fault.id == fault_id)))
+
+        if wo_type == WorkOrderType.PLANNED and schedule_id:
+            sched_meta = (
+                await session.execute(select(MaintenanceSchedule.plan_id).where(MaintenanceSchedule.id == schedule_id))
+            ).first()
+            await session.execute(locked(select(MaintenanceSchedule).where(MaintenanceSchedule.id == schedule_id)))
+            if sched_meta and sched_meta[0]:
+                await session.execute(locked(select(MaintenancePlan).where(MaintenancePlan.id == sched_meta[0])))
 
         now = datetime.now(UTC)
         wo.status = WorkOrderStatus.CLOSED

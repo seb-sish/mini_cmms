@@ -4,7 +4,7 @@ from datetime import date, timedelta
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.base import locked
+from app.db.base import locked, pairing_lock
 from app.db.models.equipment import Equipment
 from app.db.models.maintenance_plan import MaintenancePlan, PlanScope
 from app.db.models.maintenance_schedule import MaintenanceSchedule
@@ -202,6 +202,7 @@ class MaintenanceService:
         await self.session.commit()
 
     async def create_plan(self, payload: MaintenancePlanCreate) -> MaintenancePlan:
+        await pairing_lock(self.session)
         cleaned_checklist = validate_checklist_items(payload.checklist)
 
         enabled = getattr(payload, "enabled", None)
@@ -250,6 +251,7 @@ class MaintenanceService:
     async def update_plan(
         self, plan_id: uuid.UUID, expected_version: int, payload: MaintenancePlanUpdate
     ) -> MaintenancePlan:
+        await pairing_lock(self.session)
         await self.get_plan_by_id(plan_id)
         stmt = locked(select(MaintenancePlan).where(MaintenancePlan.id == plan_id))
         res = await self.session.execute(stmt)
@@ -311,19 +313,25 @@ class MaintenanceService:
                 await self.sync_equipment_schedules(eq)
 
         if payload.interval_days is not None and payload.interval_days != plan.interval_days:
-            # Lock schedules and affected equipments in canonical hierarchy: Plan -> Equipment -> Schedule
+            # Канонический порядок блокировок: Equipment -> Schedule -> Plan.
+            eq_ids_q = (
+                select(MaintenanceSchedule.equipment_id)
+                .where(MaintenanceSchedule.plan_id == plan.id)
+                .distinct()
+                .order_by(MaintenanceSchedule.equipment_id)
+            )
+            eq_ids = list((await self.session.execute(eq_ids_q)).scalars().all())
+            if eq_ids:
+                await self.session.execute(
+                    locked(select(Equipment).where(Equipment.id.in_(eq_ids)).order_by(Equipment.id))
+                )
+
             sched_stmt = locked(
                 select(MaintenanceSchedule)
                 .where(MaintenanceSchedule.plan_id == plan.id)
                 .order_by(MaintenanceSchedule.id)
             )
             schedules = (await self.session.execute(sched_stmt)).scalars().all()
-
-            eq_ids = sorted(list({s.equipment_id for s in schedules}))
-            if eq_ids:
-                await self.session.execute(
-                    locked(select(Equipment).where(Equipment.id.in_(eq_ids)).order_by(Equipment.id))
-                )
 
             # Check Q16: Cannot change interval if there are active work orders for this plan
             sched_ids = [s.id for s in schedules]

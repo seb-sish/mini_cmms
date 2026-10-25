@@ -2,9 +2,15 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import DateTime, Integer, Select
+from sqlalchemy import DateTime, Integer, Select, text
 from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+
+# Ключ advisory-блокировки домена согласования Equipment <-> Schedule <-> Plan.
+# Все операции, меняющие состав или активность пар, берут эту блокировку,
+# поэтому согласование пар сериализовано и не зависит от порядка строковых блокировок.
+PAIRING_LOCK_KEY = 84729105
 
 
 def locked(stmt: Select[Any]) -> Select[Any]:
@@ -15,6 +21,17 @@ def locked(stmt: Select[Any]) -> Select[Any]:
     затирает чужое изменение вместо ответа 412.
     """
     return stmt.with_for_update().execution_options(populate_existing=True)
+
+
+async def pairing_lock(session: AsyncSession) -> None:
+    """Сериализует операции согласования пар Equipment <-> Schedule <-> Plan.
+
+    Блокировка действует до конца транзакции и снимается при commit/rollback.
+    На СУБД без advisory-блокировок операция не выполняется.
+    """
+    conn = await session.connection()
+    if conn.dialect.name == "postgresql":
+        await session.execute(text(f"SELECT pg_advisory_xact_lock({PAIRING_LOCK_KEY})"))
 
 
 class Base(DeclarativeBase):

@@ -65,8 +65,8 @@ async def test_concurrent_repair_work_orders_same_fault_race(session_factory: as
     async def create_first():
         async with session_factory() as s_a:
             eng_a = (await s_a.execute(select(User).where(User.id == eng_id))).scalar_one()
-            # Lock fault
-            stmt = select(Fault).where(Fault.id == fault_id).with_for_update()
+            # Блокировка в каноническом порядке: Equipment -> Fault.
+            stmt = select(Equipment).where(Equipment.id == eq_id).with_for_update()
             (await s_a.execute(stmt)).scalar_one()
             barrier_entered.set()
             await asyncio.wait_for(barrier_proceed.wait(), timeout=5.0)
@@ -178,7 +178,8 @@ async def test_concurrent_planned_work_orders_same_schedule_race(session_factory
     async def create_first():
         async with session_factory() as s_a:
             eng_a = (await s_a.execute(select(User).where(User.id == eng_id))).scalar_one()
-            stmt = select(MaintenancePlan).where(MaintenancePlan.id == plan_id).with_for_update()
+            # Блокировка в каноническом порядке: Equipment -> Schedule -> Plan.
+            stmt = select(Equipment).where(Equipment.id == eq_id).with_for_update()
             (await s_a.execute(stmt)).scalar_one()
             barrier_entered.set()
             await asyncio.wait_for(barrier_proceed.wait(), timeout=5.0)

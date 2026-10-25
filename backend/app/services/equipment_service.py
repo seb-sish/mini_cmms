@@ -6,7 +6,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.db.base import locked
+from app.db.base import locked, pairing_lock
 from app.db.models.equipment import Equipment, EquipmentStatus
 from app.db.models.user import User, UserRole
 from app.db.models.work_order import WorkOrder
@@ -133,6 +133,7 @@ class EquipmentService:
         return eq
 
     async def create_equipment(self, payload: EquipmentCreate) -> Equipment:
+        await pairing_lock(self.session)
         local_today = get_local_today()
         if payload.commissioned_on > local_today:
             raise AppException(
@@ -258,7 +259,20 @@ class EquipmentService:
         return eq
 
     async def archive_equipment(self, equipment_id: uuid.UUID, current_user: User) -> Equipment:
-        eq = await self.get_equipment_by_id(equipment_id, current_user)
+        await pairing_lock(self.session)
+        await self.get_equipment_by_id(equipment_id, current_user)
+
+        # Блокировка строки оборудования сериализует архивацию с созданием заявок:
+        # проверка незавершённых нарядов и запись archived_at выполняются под ней.
+        stmt = locked(select(Equipment).where(Equipment.id == equipment_id))
+        eq = (await self.session.execute(stmt)).scalar_one_or_none()
+        if eq is None:
+            raise AppException(
+                status=404,
+                code="NOT_FOUND",
+                title="Equipment Not Found",
+                detail=f"Equipment with id '{equipment_id}' does not exist.",
+            )
         if eq.archived_at is not None:
             raise AppException(
                 status=409,
@@ -300,7 +314,18 @@ class EquipmentService:
         return eq
 
     async def restore_equipment(self, equipment_id: uuid.UUID, current_user: User) -> Equipment:
-        eq = await self.get_equipment_by_id(equipment_id, current_user)
+        await pairing_lock(self.session)
+        await self.get_equipment_by_id(equipment_id, current_user)
+
+        stmt = locked(select(Equipment).where(Equipment.id == equipment_id))
+        eq = (await self.session.execute(stmt)).scalar_one_or_none()
+        if eq is None:
+            raise AppException(
+                status=404,
+                code="NOT_FOUND",
+                title="Equipment Not Found",
+                detail=f"Equipment with id '{equipment_id}' does not exist.",
+            )
         if eq.archived_at is None:
             raise AppException(
                 status=409,
