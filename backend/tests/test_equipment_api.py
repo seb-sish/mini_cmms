@@ -48,6 +48,7 @@ async def test_equipment_lifecycle(async_client: AsyncClient, engineer_auth):
             "category": "Machining",
             "location": "Shop Floor 1",
             "commissioned_on": "2026-01-01",
+            "status": "OPERATIONAL",
         },
     )
     assert res.status_code == 201
@@ -74,3 +75,95 @@ async def test_equipment_lifecycle(async_client: AsyncClient, engineer_auth):
     assert rest_res.status_code == 200
     assert rest_res.json()["archived_at"] is None
     assert rest_res.json()["status"] == "OUT_OF_SERVICE"
+
+
+@pytest.mark.asyncio
+async def test_equipment_create_applies_requested_status(async_client: AsyncClient, engineer_auth):
+    """POST /equipment сохраняет переданный статус, а не фиксированный OPERATIONAL."""
+    _, token = engineer_auth
+    headers = {"Authorization": f"Bearer {token}"}
+
+    res = await async_client.post(
+        "/api/v1/equipment",
+        headers=headers,
+        json={
+            "name": "Pump Under Repair",
+            "inventory_number": "EQ-STATUS-1",
+            "category": "Pumps",
+            "location": "Shop",
+            "commissioned_on": "2026-01-01",
+            "status": "UNDER_REPAIR",
+        },
+    )
+    assert res.status_code == 201
+    assert res.json()["status"] == "UNDER_REPAIR"
+
+
+@pytest.mark.asyncio
+async def test_equipment_patch_applies_inventory_number_and_commissioned_on(
+    async_client: AsyncClient, engineer_auth
+):
+    """PATCH применяет inventory_number и commissioned_on и увеличивает версию."""
+    _, token = engineer_auth
+    headers = {"Authorization": f"Bearer {token}"}
+
+    res = await async_client.post(
+        "/api/v1/equipment",
+        headers=headers,
+        json={
+            "name": "Patchable Machine",
+            "inventory_number": "EQ-PATCH-1",
+            "category": "Machining",
+            "location": "Shop",
+            "commissioned_on": "2026-01-01",
+            "status": "OPERATIONAL",
+        },
+    )
+    assert res.status_code == 201
+    eq_id = res.json()["id"]
+    version = res.json()["version"]
+
+    res = await async_client.patch(
+        f"/api/v1/equipment/{eq_id}",
+        headers={**headers, "If-Match": f'"{eq_id}:{version}"'},
+        json={"inventory_number": "EQ-PATCH-2", "commissioned_on": "2025-06-15"},
+    )
+    assert res.status_code == 200
+    body = res.json()
+    assert body["inventory_number"] == "EQ-PATCH-2"
+    assert body["commissioned_on"] == "2025-06-15"
+    assert body["version"] == version + 1
+
+    # Дубликат инвентарного номера — конфликт.
+    res = await async_client.post(
+        "/api/v1/equipment",
+        headers=headers,
+        json={
+            "name": "Second Machine",
+            "inventory_number": "EQ-PATCH-3",
+            "category": "Machining",
+            "location": "Shop",
+            "commissioned_on": "2026-01-01",
+            "status": "OPERATIONAL",
+        },
+    )
+    assert res.status_code == 201
+    other_id = res.json()["id"]
+    other_version = res.json()["version"]
+
+    res = await async_client.patch(
+        f"/api/v1/equipment/{other_id}",
+        headers={**headers, "If-Match": f'"{other_id}:{other_version}"'},
+        json={"inventory_number": "eq-patch-2"},
+    )
+    assert res.status_code == 409
+    assert res.json()["code"] == "EQUIPMENT_ALREADY_EXISTS"
+
+    # Дата в будущем не принимается.
+    res = await async_client.patch(
+        f"/api/v1/equipment/{other_id}",
+        headers={**headers, "If-Match": f'"{other_id}:{other_version}"'},
+        json={"commissioned_on": "2999-01-01"},
+    )
+    assert res.status_code == 422
+    assert res.json()["code"] == "VALIDATION_ERROR"

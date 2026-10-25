@@ -160,7 +160,7 @@ class EquipmentService:
             category=payload.category.strip(),
             location=payload.location.strip(),
             commissioned_on=payload.commissioned_on,
-            status=EquipmentStatus.OPERATIONAL,
+            status=payload.status if payload.status is not None else EquipmentStatus.OPERATIONAL,
         )
         self.session.add(eq)
         await self.session.flush()
@@ -212,6 +212,35 @@ class EquipmentService:
         has_changes = False
         if payload.name is not None and payload.name.strip() != eq.name:
             eq.name = payload.name.strip()
+            has_changes = True
+
+        if payload.inventory_number is not None:
+            inv = payload.inventory_number.strip()
+            if inv.lower() != eq.inventory_number.lower():
+                dup_stmt = select(Equipment).where(
+                    func.lower(Equipment.inventory_number) == inv.lower(),
+                    Equipment.id != equipment_id,
+                )
+                duplicate = (await self.session.execute(dup_stmt)).scalar_one_or_none()
+                if duplicate is not None:
+                    raise AppException(
+                        status=409,
+                        code="EQUIPMENT_ALREADY_EXISTS",
+                        title="Conflict",
+                        detail=f"Equipment with inventory number '{payload.inventory_number}' already exists.",
+                    )
+                eq.inventory_number = inv
+                has_changes = True
+
+        if payload.commissioned_on is not None and payload.commissioned_on != eq.commissioned_on:
+            if payload.commissioned_on > get_local_today():
+                raise AppException(
+                    status=422,
+                    code="VALIDATION_ERROR",
+                    title="Validation Error",
+                    detail="commissioned_on date cannot be in the future.",
+                )
+            eq.commissioned_on = payload.commissioned_on
             has_changes = True
 
         if payload.location is not None and payload.location.strip() != eq.location:

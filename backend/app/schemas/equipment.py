@@ -15,7 +15,7 @@ class EquipmentCreate(BaseModel):
     category: str = Field(min_length=1, max_length=100, pattern=r"\S")
     location: str = Field(min_length=1, max_length=200, pattern=r"\S")
     commissioned_on: date
-    status: EquipmentStatus | None = Field(default=EquipmentStatus.OPERATIONAL)
+    status: EquipmentStatus
 
 
 class EquipmentPatch(BaseModel):

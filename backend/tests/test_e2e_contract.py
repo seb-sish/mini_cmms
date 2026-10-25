@@ -99,6 +99,7 @@ async def test_full_acceptance_flows(async_client: AsyncClient, db_session: Asyn
             "category": "PUMPS",
             "location": "Pumping Station 1",
             "commissioned_on": "2024-01-15",
+            "status": "OPERATIONAL",
         },
     )
     assert eq_res.status_code == 201

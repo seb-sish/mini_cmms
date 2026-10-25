@@ -40,6 +40,7 @@ async def test_pairing_lock_serializes_schedule_operations(session_factory: asyn
                         category="Machining",
                         location="Shop",
                         commissioned_on=date(2026, 1, 1),
+                        status=EquipmentStatus.OPERATIONAL,
                     )
                 )
 
@@ -104,6 +105,7 @@ async def test_concurrent_plan_and_equipment_create_matching_schedule(
                             category=category,
                             location="Shop",
                             commissioned_on=date(2026, 1, 1),
+                            status=EquipmentStatus.OPERATIONAL,
                         )
                     )
                 except Exception as exc:  # noqa: BLE001

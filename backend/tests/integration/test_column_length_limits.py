@@ -8,6 +8,7 @@ from sqlalchemy import bindparam, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.security import hash_password
+from app.db.models.equipment import EquipmentStatus
 from app.db.models.maintenance_plan import PlanScope
 from app.db.models.user import User, UserRole, UserStatus
 from app.schemas.equipment import EquipmentCreate
@@ -35,6 +36,7 @@ async def test_contract_max_lengths_on_postgresql(session_factory: async_session
                 category="Machining",
                 location=location,
                 commissioned_on=date(2026, 1, 1),
+                status=EquipmentStatus.OPERATIONAL,
             )
         )
         assert equipment.name == name
@@ -102,5 +104,6 @@ async def test_values_beyond_contract_max_lengths_are_rejected(session_factory: 
                     category="Machining",
                     location="L" * 200,
                     commissioned_on=date(2026, 1, 1),
+                    status=EquipmentStatus.OPERATIONAL,
                 )
             )

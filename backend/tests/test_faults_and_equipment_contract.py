@@ -58,6 +58,7 @@ async def test_fault_requires_severity_and_validates_future_date(async_client: A
             "category": "TURBINES",
             "location": "Sector A",
             "commissioned_on": "2023-01-01",
+            "status": "OPERATIONAL",
         },
     )
     assert eq_res.status_code == 201
