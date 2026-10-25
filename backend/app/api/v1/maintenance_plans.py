@@ -24,6 +24,9 @@ async def list_plans(
     scope: PlanScope | None = None,
     is_active: bool | None = None,
     q: str | None = None,
+    category: str | None = None,
+    equipment_id: uuid.UUID | None = None,
+    enabled: bool | None = None,
 ) -> PaginatedResponse:
     service = MaintenanceService(db)
     items, total = await service.list_plans(
@@ -33,6 +36,9 @@ async def list_plans(
         scope=scope,
         is_active=is_active,
         q=q,
+        category=category,
+        equipment_id=equipment_id,
+        enabled=enabled,
     )
     return PaginatedResponse(
         items=[MaintenancePlanRead.model_validate(p) for p in items],

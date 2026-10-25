@@ -1,4 +1,5 @@
 import uuid
+from datetime import date
 
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,6 +23,7 @@ async def list_notifications(
     type: NotificationType | None = Query(None),
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
+    planned_due_on: date | None = Query(None),
     session: AsyncSession = Depends(get_session),
     current_user: User = Depends(require_role("ENGINEER", "TECHNICIAN")),
 ):
@@ -31,6 +33,7 @@ async def list_notifications(
         type=type,
         limit=limit,
         offset=offset,
+        planned_due_on=planned_due_on,
     )
     return NotificationPage(
         items=items,

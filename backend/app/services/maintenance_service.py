@@ -1,7 +1,7 @@
 import uuid
 from datetime import date, timedelta
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.base import escape_like, locked, pairing_lock
@@ -88,6 +88,9 @@ class MaintenanceService:
         scope: PlanScope | None = None,
         is_active: bool | None = None,
         q: str | None = None,
+        category: str | None = None,
+        equipment_id: uuid.UUID | None = None,
+        enabled: bool | None = None,
     ) -> tuple[list[MaintenancePlan], int]:
         stmt = select(MaintenancePlan)
         count_stmt = select(func.count(MaintenancePlan.id))
@@ -113,6 +116,21 @@ class MaintenanceService:
             term = f"%{escape_like(q.strip().lower())}%"
             stmt = stmt.where(func.lower(MaintenancePlan.name).like(term, escape="\\"))
             count_stmt = count_stmt.where(func.lower(MaintenancePlan.name).like(term, escape="\\"))
+        if category is not None:
+            stmt = stmt.where(MaintenancePlan.category == category)
+            count_stmt = count_stmt.where(MaintenancePlan.category == category)
+        if equipment_id is not None:
+            # Точное оборудование; для регламента по категории — категория этого оборудования.
+            eq_category = select(Equipment.category).where(Equipment.id == equipment_id).scalar_subquery()
+            equipment_cond = or_(
+                MaintenancePlan.equipment_id == equipment_id,
+                MaintenancePlan.category == eq_category,
+            )
+            stmt = stmt.where(equipment_cond)
+            count_stmt = count_stmt.where(equipment_cond)
+        if enabled is not None:
+            stmt = stmt.where(MaintenancePlan.is_active == enabled)
+            count_stmt = count_stmt.where(MaintenancePlan.is_active == enabled)
 
         stmt = stmt.order_by(MaintenancePlan.name.asc(), MaintenancePlan.id.asc()).offset(offset).limit(limit)
 
@@ -414,6 +432,7 @@ class MaintenanceService:
         is_active: bool | None = None,
         due_from: date | None = None,
         due_to: date | None = None,
+        overdue: bool | None = None,
     ) -> tuple[list[tuple[MaintenanceSchedule, bool, bool]], int]:
         if due_from and due_to and due_from > due_to:
             raise AppException(
@@ -454,6 +473,26 @@ class MaintenanceService:
         if due_to is not None:
             stmt = stmt.where(MaintenanceSchedule.next_due_on <= due_to)
             count_stmt = count_stmt.where(MaintenanceSchedule.next_due_on <= due_to)
+        if overdue is not None:
+            # Просроченность считается так же, как флаг is_overdue в ответе:
+            # активный график с прошедшей датой и без завершённого наряда на эту дату.
+            completed_due_exists = (
+                select(WorkOrder.id)
+                .where(
+                    WorkOrder.schedule_id == MaintenanceSchedule.id,
+                    WorkOrder.planned_due_on == MaintenanceSchedule.next_due_on,
+                    WorkOrder.status == WorkOrderStatus.COMPLETED,
+                )
+                .exists()
+            )
+            overdue_cond = and_(
+                MaintenanceSchedule.is_active,
+                MaintenanceSchedule.next_due_on < company_today,
+                ~completed_due_exists,
+            )
+            overdue_filter = overdue_cond if overdue else ~overdue_cond
+            stmt = stmt.where(overdue_filter)
+            count_stmt = count_stmt.where(overdue_filter)
 
         stmt = (
             stmt.order_by(MaintenanceSchedule.next_due_on.asc(), MaintenanceSchedule.id.asc())

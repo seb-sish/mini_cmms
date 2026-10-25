@@ -26,6 +26,7 @@ async def list_schedules(
     is_active: bool | None = None,
     due_from: date | None = None,
     due_to: date | None = None,
+    overdue: bool | None = None,
 ) -> PaginatedResponse:
     service = MaintenanceService(db)
     items, total = await service.list_schedules(
@@ -37,6 +38,7 @@ async def list_schedules(
         is_active=is_active,
         due_from=due_from,
         due_to=due_to,
+        overdue=overdue,
     )
     result_items = []
     for sched, is_overdue, has_current in items:
