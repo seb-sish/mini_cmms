@@ -9,6 +9,7 @@ from app.config import settings
 from app.db.base import locked
 from app.db.models.equipment import Equipment, EquipmentStatus
 from app.db.models.user import User, UserRole
+from app.db.models.work_order import WorkOrder
 from app.errors.exceptions import AppException
 from app.schemas.equipment import EquipmentCreate, EquipmentPatch
 
@@ -54,6 +55,12 @@ class EquipmentService:
         if not include_archived:
             stmt = stmt.where(Equipment.archived_at.is_(None))
             count_stmt = count_stmt.where(Equipment.archived_at.is_(None))
+
+        if current_user.role == UserRole.TECHNICIAN:
+            # Technician sees only equipment related to their current assignments
+            assigned_equipment = select(WorkOrder.equipment_id).where(WorkOrder.assignee_id == current_user.id)
+            stmt = stmt.where(Equipment.id.in_(assigned_equipment))
+            count_stmt = count_stmt.where(Equipment.id.in_(assigned_equipment))
 
         if status_filter is not None:
             stmt = stmt.where(Equipment.status == status_filter)
@@ -104,6 +111,24 @@ class EquipmentService:
                 title="Equipment Not Found",
                 detail=f"Equipment with id '{equipment_id}' does not exist.",
             )
+
+        if current_user.role == UserRole.TECHNICIAN:
+            # Technician sees only equipment related to their current assignments
+            has_assigned = (
+                await self.session.execute(
+                    select(func.count(WorkOrder.id)).where(
+                        WorkOrder.equipment_id == eq.id,
+                        WorkOrder.assignee_id == current_user.id,
+                    )
+                )
+            ).scalar_one()
+            if not has_assigned:
+                raise AppException(
+                    status=404,
+                    code="NOT_FOUND",
+                    title="Equipment Not Found",
+                    detail=f"Equipment with id '{equipment_id}' does not exist.",
+                )
 
         return eq
 

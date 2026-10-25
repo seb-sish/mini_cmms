@@ -60,6 +60,24 @@ class WorkOrderService:
         suffix = f"{now.strftime('%H%M%S')}{uuid.uuid4().hex[:4].upper()}"
         return f"WO-{now.strftime('%Y%m%d')}-{suffix}"
 
+    @staticmethod
+    async def _lock_assignee(session: AsyncSession, assignee_id: uuid.UUID) -> User:
+        """Блокирует строку кандидата и проверяет допустимость после блокировки.
+
+        Блокировка сериализует назначение с PATCH роли/статуса пользователя:
+        смена роли получает ту же блокировку, поэтому назначение либо увидит
+        новую роль, либо смена роли увидит новое назначение.
+        """
+        stmt = locked(select(User).where(User.id == assignee_id))
+        tech = (await session.execute(stmt)).scalar_one_or_none()
+        if tech is None:
+            raise AppException(404, "NOT_FOUND", "Assignee not found")
+        if tech.role != UserRole.TECHNICIAN:
+            raise AppException(422, "INVALID_ASSIGNEE_ROLE", "Assignee must be a technician")
+        if tech.status != UserStatus.ACTIVE:
+            raise AppException(422, "ASSIGNEE_NOT_ACTIVE", "Assignee must be an active technician")
+        return tech
+
     @classmethod
     async def create_work_order(cls, session: AsyncSession, current_user: User, data: WorkOrderCreate) -> WorkOrder:
         if current_user.role == UserRole.OPERATOR:
@@ -80,12 +98,18 @@ class WorkOrderService:
             if not equipment:
                 raise AppException(404, "NOT_FOUND", "Equipment not found")
             if equipment.archived_at is not None:
+                if current_user.role != UserRole.ENGINEER:
+                    # Оператор не видит архивное оборудование: не подтверждаем существование.
+                    raise AppException(404, "NOT_FOUND", "Equipment not found")
                 raise AppException(409, "EQUIPMENT_ARCHIVED", "Equipment is archived")
 
             if data.fault_id is not None:
                 fault_stmt = locked(select(Fault).where(Fault.id == data.fault_id))
                 fault = (await session.execute(fault_stmt)).scalar_one_or_none()
                 if not fault:
+                    raise AppException(404, "NOT_FOUND", "Fault not found")
+                if current_user.role == UserRole.OPERATOR and fault.author_id != current_user.id:
+                    # Чужая неисправность недоступна оператору: ссылка из тела не обходит видимость.
                     raise AppException(404, "NOT_FOUND", "Fault not found")
                 if fault.equipment_id != equipment.id:
                     raise AppException(422, "EQUIPMENT_MISMATCH", "Fault does not match equipment")
@@ -374,14 +398,15 @@ class WorkOrderService:
         if current_user.role != UserRole.ENGINEER:
             raise AppException(403, "ACCESS_DENIED", "Only engineer can assign work orders")
 
+        # Канонический порядок блокировок: User -> WorkOrder.
+        # Блокировка строки кандидата сериализует назначение со сменой роли/статуса
+        # и позволяет повторно проверить допустимость после её получения.
+        tech = await cls._lock_assignee(session, assignee_id)
+
         wo = await cls.get_work_order_for_update(session, work_order_id)
 
         if wo.status != WorkOrderStatus.CREATED:
             raise AppException(409, "INVALID_WORK_ORDER_STATE", "Can only assign work orders in CREATED state")
-
-        tech = await session.get(User, assignee_id)
-        if not tech or tech.role != UserRole.TECHNICIAN or tech.status != UserStatus.ACTIVE:
-            raise AppException(422, "INVALID_ASSIGNEE", "Assignee must be an active technician")
 
         wo.assignee_id = tech.id
         wo.status = WorkOrderStatus.ASSIGNED
@@ -408,14 +433,12 @@ class WorkOrderService:
         if current_user.role != UserRole.ENGINEER:
             raise AppException(403, "ACCESS_DENIED", "Only engineer can reassign work orders")
 
+        tech = await cls._lock_assignee(session, assignee_id)
+
         wo = await cls.get_work_order_for_update(session, work_order_id)
 
         if wo.status not in (WorkOrderStatus.ASSIGNED, WorkOrderStatus.IN_PROGRESS):
             raise AppException(409, "INVALID_WORK_ORDER_STATE", "Can only reassign ASSIGNED or IN_PROGRESS work orders")
-
-        tech = await session.get(User, assignee_id)
-        if not tech or tech.role != UserRole.TECHNICIAN or tech.status != UserStatus.ACTIVE:
-            raise AppException(422, "INVALID_ASSIGNEE", "Assignee must be an active technician")
 
         if tech.id == wo.assignee_id:
             raise AppException(409, "SAME_ASSIGNEE", "Work order already assigned to this technician")
