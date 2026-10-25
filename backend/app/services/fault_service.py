@@ -4,13 +4,13 @@ from datetime import date
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.base import locked
+from app.db.base import escape_like, locked
 from app.db.models.equipment import Equipment
 from app.db.models.fault import Fault, FaultSeverity, FaultStatus
 from app.db.models.user import User, UserRole
 from app.errors.exceptions import AppException
 from app.schemas.fault import FaultCreate, FaultPatch
-from app.services.equipment_service import escape_like, get_local_today
+from app.services.equipment_service import get_local_today
 
 
 class FaultService:
@@ -76,8 +76,8 @@ class FaultService:
 
         if q is not None and q.strip():
             escaped = f"%{escape_like(q.strip().lower())}%"
-            stmt = stmt.where(func.lower(Fault.description).like(escaped))
-            count_stmt = count_stmt.where(func.lower(Fault.description).like(escaped))
+            stmt = stmt.where(func.lower(Fault.description).like(escaped, escape="\\"))
+            count_stmt = count_stmt.where(func.lower(Fault.description).like(escaped, escape="\\"))
 
         # Ordering per spec Q17/Design Notes: detected_on DESC, id DESC
         stmt = stmt.order_by(Fault.detected_on.desc(), Fault.id.desc()).offset(offset).limit(limit)

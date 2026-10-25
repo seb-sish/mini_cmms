@@ -48,6 +48,11 @@ async def pairing_lock(session: AsyncSession) -> None:
         await session.execute(text(f"SELECT pg_advisory_xact_lock({PAIRING_LOCK_KEY})"))
 
 
+def escape_like(value: str) -> str:
+    """Экранирует спецсимволы LIKE, чтобы поиск был буквальным."""
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
 class Base(DeclarativeBase):
     def __init__(self, **kwargs: Any) -> None:
         for k, v in kwargs.items():

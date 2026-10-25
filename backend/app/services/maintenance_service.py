@@ -4,7 +4,7 @@ from datetime import date, timedelta
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.base import locked, pairing_lock
+from app.db.base import escape_like, locked, pairing_lock
 from app.db.models.equipment import Equipment
 from app.db.models.maintenance_plan import MaintenancePlan, PlanScope
 from app.db.models.maintenance_schedule import MaintenanceSchedule
@@ -96,9 +96,9 @@ class MaintenanceService:
             stmt = stmt.where(MaintenancePlan.is_active == is_active)
             count_stmt = count_stmt.where(MaintenancePlan.is_active == is_active)
         if q is not None and q.strip():
-            term = f"%{q.strip().lower()}%"
-            stmt = stmt.where(func.lower(MaintenancePlan.name).like(term))
-            count_stmt = count_stmt.where(func.lower(MaintenancePlan.name).like(term))
+            term = f"%{escape_like(q.strip().lower())}%"
+            stmt = stmt.where(func.lower(MaintenancePlan.name).like(term, escape="\\"))
+            count_stmt = count_stmt.where(func.lower(MaintenancePlan.name).like(term, escape="\\"))
 
         stmt = stmt.order_by(MaintenancePlan.name.asc(), MaintenancePlan.id.asc()).offset(offset).limit(limit)
 

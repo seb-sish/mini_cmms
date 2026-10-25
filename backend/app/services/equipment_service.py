@@ -7,7 +7,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.db.base import is_unique_violation, locked, pairing_lock
+from app.db.base import escape_like, is_unique_violation, locked, pairing_lock
 from app.db.models.equipment import Equipment, EquipmentStatus
 from app.db.models.user import User, UserRole
 from app.db.models.work_order import WorkOrder
@@ -21,10 +21,6 @@ def get_company_today() -> date:
 
 
 get_local_today = get_company_today
-
-
-def escape_like(value: str) -> str:
-    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
 class EquipmentService:
@@ -77,13 +73,13 @@ class EquipmentService:
 
         if q is not None and q.strip():
             escaped = f"%{escape_like(q.strip().lower())}%"
-            filter_expr = func.lower(Equipment.name).like(escaped) | func.lower(Equipment.inventory_number).like(
-                escaped
-            )
+            filter_expr = func.lower(Equipment.name).like(escaped, escape="\\") | func.lower(
+                Equipment.inventory_number
+            ).like(escaped, escape="\\")
             stmt = stmt.where(filter_expr)
             count_stmt = count_stmt.where(filter_expr)
 
-        stmt = stmt.order_by(Equipment.created_at.desc(), Equipment.id.desc()).offset(offset).limit(limit)
+        stmt = stmt.order_by(Equipment.name.asc(), Equipment.id.asc()).offset(offset).limit(limit)
 
         total_res = await self.session.execute(count_stmt)
         total = total_res.scalar_one()

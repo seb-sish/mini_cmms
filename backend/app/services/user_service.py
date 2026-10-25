@@ -5,7 +5,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import hash_password
-from app.db.base import is_unique_violation, locked
+from app.db.base import escape_like, is_unique_violation, locked
 from app.db.models.user import User, UserRole, UserStatus
 from app.errors.exceptions import AppException
 from app.schemas.user import UserCreate, UserPatch
@@ -35,12 +35,13 @@ class UserService:
             query = query.where(User.status == status)
             count_query = count_query.where(User.status == status)
         if q is not None and q.strip():
-            query = query.where(User.login.ilike(f"%{q.strip()}%"))
-            count_query = count_query.where(User.login.ilike(f"%{q.strip()}%"))
+            pattern = f"%{escape_like(q.strip())}%"
+            query = query.where(User.login.ilike(pattern, escape="\\"))
+            count_query = count_query.where(User.login.ilike(pattern, escape="\\"))
 
         total = (await self.session.execute(count_query)).scalar_one()
 
-        query = query.order_by(User.created_at.desc(), User.id.desc()).limit(limit).offset(offset)
+        query = query.order_by(User.login.asc(), User.id.asc()).limit(limit).offset(offset)
         result = await self.session.execute(query)
         users = list(result.scalars().all())
 
