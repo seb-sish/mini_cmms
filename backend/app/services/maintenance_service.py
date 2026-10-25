@@ -302,12 +302,26 @@ class MaintenanceService:
                 await self.sync_equipment_schedules(eq)
 
         if payload.interval_days is not None and payload.interval_days != plan.interval_days:
+            # Lock schedules and affected equipments in canonical hierarchy: Plan -> Equipment -> Schedule
+            sched_stmt = (
+                select(MaintenanceSchedule)
+                .where(MaintenanceSchedule.plan_id == plan.id)
+                .order_by(MaintenanceSchedule.id)
+                .with_for_update()
+            )
+            schedules = (await self.session.execute(sched_stmt)).scalars().all()
+
+            eq_ids = sorted(list({s.equipment_id for s in schedules}))
+            if eq_ids:
+                await self.session.execute(
+                    select(Equipment).where(Equipment.id.in_(eq_ids)).order_by(Equipment.id).with_for_update()
+                )
+
             # Check Q16: Cannot change interval if there are active work orders for this plan
-            active_wo_q = (
-                select(func.count(WorkOrder.id))
-                .join(MaintenanceSchedule, WorkOrder.schedule_id == MaintenanceSchedule.id)
-                .where(
-                    MaintenanceSchedule.plan_id == plan.id,
+            sched_ids = [s.id for s in schedules]
+            if sched_ids:
+                active_wo_q = select(func.count(WorkOrder.id)).where(
+                    WorkOrder.schedule_id.in_(sched_ids),
                     WorkOrder.status.in_([
                         WorkOrderStatus.CREATED,
                         WorkOrderStatus.ASSIGNED,
@@ -315,20 +329,16 @@ class MaintenanceService:
                         WorkOrderStatus.COMPLETED,
                     ]),
                 )
-            )
-            active_wo_count = (await self.session.execute(active_wo_q)).scalar_one()
-            if active_wo_count > 0:
-                raise AppException(
-                    status=409,
-                    code="ACTIVE_MAINTENANCE_WORK",
-                    title="Active Maintenance Work",
-                    detail="Cannot change interval while there are active maintenance work orders for this plan.",
-                )
+                active_wo_count = (await self.session.execute(active_wo_q)).scalar_one()
+                if active_wo_count > 0:
+                    raise AppException(
+                        status=409,
+                        code="ACTIVE_MAINTENANCE_WORK",
+                        title="Active Maintenance Work",
+                        detail="Cannot change interval while there are active maintenance work orders for this plan.",
+                    )
 
             # Recalculate schedules where last_completed_on is set
-            sched_stmt = select(MaintenanceSchedule).where(MaintenanceSchedule.plan_id == plan.id)
-            schedules = (await self.session.execute(sched_stmt)).scalars().all()
-
             for s in schedules:
                 if s.last_completed_on is not None:
                     new_due = s.last_completed_on + timedelta(days=payload.interval_days)
@@ -339,6 +349,7 @@ class MaintenanceService:
                     )
                     last_closed = (await self.session.execute(last_closed_q)).scalar_one_or_none()
                     if last_closed is not None and new_due <= last_closed:
+                        await self.session.rollback()
                         raise AppException(
                             status=409,
                             code="NON_ADVANCING_DUE_DATE",
@@ -418,9 +429,12 @@ class MaintenanceService:
         items = list(items_res.scalars().all())
 
         active_pairs = set()
+        completed_pairs = set()
         if items:
             sched_ids = [s.id for s in items]
-            active_orders_q = select(WorkOrder.schedule_id, WorkOrder.planned_due_on).where(
+            active_orders_q = select(
+                WorkOrder.schedule_id, WorkOrder.planned_due_on, WorkOrder.status
+            ).where(
                 WorkOrder.schedule_id.in_(sched_ids),
                 WorkOrder.status.in_([
                     WorkOrderStatus.CREATED,
@@ -429,15 +443,32 @@ class MaintenanceService:
                     WorkOrderStatus.COMPLETED,
                 ]),
             )
-            active_pairs = set((await self.session.execute(active_orders_q)).all())
+            rows = (await self.session.execute(active_orders_q)).all()
+            for sched_id_val, planned_due, status_val in rows:
+                active_pairs.add((sched_id_val, planned_due))
+                if status_val == WorkOrderStatus.COMPLETED:
+                    completed_pairs.add((sched_id_val, planned_due))
 
         annotated_items = []
         for s in items:
-            is_overdue = s.is_active and s.next_due_on < company_today
-            has_current = (s.id, s.next_due_on) in active_pairs
+            is_overdue, has_current = self.calculate_schedule_flags(
+                s, company_today, active_pairs, completed_pairs
+            )
             annotated_items.append((s, is_overdue, has_current))
 
         return annotated_items, total
+
+    @staticmethod
+    def calculate_schedule_flags(
+        schedule: MaintenanceSchedule,
+        company_today: date,
+        active_due_pairs: set[tuple[uuid.UUID, date]],
+        completed_due_pairs: set[tuple[uuid.UUID, date]],
+    ) -> tuple[bool, bool]:
+        has_current = (schedule.id, schedule.next_due_on) in active_due_pairs
+        has_completed = (schedule.id, schedule.next_due_on) in completed_due_pairs
+        is_overdue = bool(schedule.is_active and schedule.next_due_on < company_today and not has_completed)
+        return is_overdue, has_current
 
     async def get_schedule_by_id(self, schedule_id: uuid.UUID, current_user: Optional[User] = None) -> tuple[MaintenanceSchedule, bool, bool]:
         stmt = select(MaintenanceSchedule).where(MaintenanceSchedule.id == schedule_id)
@@ -468,9 +499,8 @@ class MaintenanceService:
                 )
 
         company_today = get_company_today()
-        is_overdue = sched.is_active and sched.next_due_on < company_today
 
-        has_current_q = select(func.count(WorkOrder.id)).where(
+        orders_q = select(WorkOrder.planned_due_on, WorkOrder.status).where(
             WorkOrder.schedule_id == sched.id,
             WorkOrder.planned_due_on == sched.next_due_on,
             WorkOrder.status.in_([
@@ -480,6 +510,12 @@ class MaintenanceService:
                 WorkOrderStatus.COMPLETED,
             ]),
         )
-        has_current = (await self.session.execute(has_current_q)).scalar_one() > 0
+        rows = (await self.session.execute(orders_q)).all()
+        active_pairs = {(sched.id, r[0]) for r in rows}
+        completed_pairs = {(sched.id, r[0]) for r in rows if r[1] == WorkOrderStatus.COMPLETED}
+
+        is_overdue, has_current = self.calculate_schedule_flags(
+            sched, company_today, active_pairs, completed_pairs
+        )
 
         return sched, is_overdue, has_current

@@ -563,7 +563,7 @@ class WorkOrderService:
         current_user: User,
         work_order_id: uuid.UUID,
         result: str,
-        replaced_parts: list[str],
+        replaced_parts: Optional[list[str]] = None,
     ) -> WorkOrder:
         wo = await cls.get_work_order_for_update(session, work_order_id)
 
@@ -616,6 +616,39 @@ class WorkOrderService:
     ) -> WorkOrder:
         if current_user.role != UserRole.ENGINEER:
             raise AppException(403, "ACCESS_DENIED", "Only engineer can close work orders")
+
+        meta = (await session.execute(
+            select(WorkOrder.type, WorkOrder.schedule_id, WorkOrder.fault_id, WorkOrder.equipment_id)
+            .where(WorkOrder.id == work_order_id)
+        )).first()
+        if not meta:
+            raise AppException(404, "NOT_FOUND", "Work order not found")
+        wo_type, schedule_id, fault_id, equipment_id = meta
+
+        if wo_type == WorkOrderType.PLANNED and schedule_id:
+            sched_meta = (await session.execute(
+                select(MaintenanceSchedule.plan_id).where(MaintenanceSchedule.id == schedule_id)
+            )).first()
+            if sched_meta and sched_meta[0]:
+                await session.execute(
+                    select(MaintenancePlan).where(MaintenancePlan.id == sched_meta[0]).with_for_update()
+                )
+            if equipment_id:
+                await session.execute(
+                    select(Equipment).where(Equipment.id == equipment_id).with_for_update()
+                )
+            await session.execute(
+                select(MaintenanceSchedule).where(MaintenanceSchedule.id == schedule_id).with_for_update()
+            )
+        elif wo_type == WorkOrderType.REPAIR:
+            if equipment_id:
+                await session.execute(
+                    select(Equipment).where(Equipment.id == equipment_id).with_for_update()
+                )
+            if fault_id:
+                await session.execute(
+                    select(Fault).where(Fault.id == fault_id).with_for_update()
+                )
 
         wo = await cls.get_work_order_for_update(session, work_order_id)
         if wo.status != WorkOrderStatus.COMPLETED:
