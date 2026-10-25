@@ -1,6 +1,7 @@
 import asyncio
 import uuid
 from datetime import date, datetime, timedelta, timezone
+
 import pytest
 from arq.connections import RedisSettings, create_pool
 from arq.worker import Worker
@@ -47,21 +48,24 @@ async def test_concurrent_worker_ticks_no_duplicate_or_integrity_error(
     async with session_factory() as s:
         eng1 = User(
             id=eng1_id,
-            login="eng_notif_1", full_name="Eng Notif 1",
+            login="eng_notif_1",
+            full_name="Eng Notif 1",
             password_hash=hash_password("Pass123!"),
             role=UserRole.ENGINEER,
             status=UserStatus.ACTIVE,
         )
         eng2 = User(
             id=eng2_id,
-            login="eng_notif_2", full_name="Eng Notif 2",
+            login="eng_notif_2",
+            full_name="Eng Notif 2",
             password_hash=hash_password("Pass123!"),
             role=UserRole.ENGINEER,
             status=UserStatus.ACTIVE,
         )
         tech = User(
             id=tech_id,
-            login="tech_notif_1", full_name="Tech Notif 1",
+            login="tech_notif_1",
+            full_name="Tech Notif 1",
             password_hash=hash_password("Pass123!"),
             role=UserRole.TECHNICIAN,
             status=UserStatus.ACTIVE,
@@ -179,14 +183,16 @@ async def test_notification_window_catchup_and_lifecycle(
     async with session_factory() as s:
         eng = User(
             id=eng_id,
-            login="eng_window_test", full_name="Eng Window",
+            login="eng_window_test",
+            full_name="Eng Window",
             password_hash=hash_password("Pass123!"),
             role=UserRole.ENGINEER,
             status=UserStatus.ACTIVE,
         )
         tech = User(
             id=tech_id,
-            login="tech_window_test", full_name="Tech Window",
+            login="tech_window_test",
+            full_name="Tech Window",
             password_hash=hash_password("Pass123!"),
             role=UserRole.TECHNICIAN,
             status=UserStatus.ACTIVE,
@@ -245,12 +251,14 @@ async def test_notification_window_catchup_and_lifecycle(
     async with session_factory() as s:
         cnt = await generate_maintenance_notifications({"session": s})
         assert cnt == 1
-        on_due = (await s.execute(
-            select(Notification).where(
-                Notification.schedule_id == sched_id,
-                Notification.type == NotificationType.ON_DUE_DATE,
+        on_due = (
+            await s.execute(
+                select(Notification).where(
+                    Notification.schedule_id == sched_id,
+                    Notification.type == NotificationType.ON_DUE_DATE,
+                )
             )
-        )).scalar_one()
+        ).scalar_one()
         assert on_due.type == NotificationType.ON_DUE_DATE
 
     # Step 4: Re-running tick creates 0 duplicates
@@ -281,12 +289,14 @@ async def test_notification_window_catchup_and_lifecycle(
     async with session_factory() as s:
         cnt = await generate_maintenance_notifications({"session": s})
         assert cnt == 1  # Tech receives notification
-        tech_notif = (await s.execute(
-            select(Notification).where(
-                Notification.schedule_id == sched_id,
-                Notification.recipient_id == tech_id,
+        tech_notif = (
+            await s.execute(
+                select(Notification).where(
+                    Notification.schedule_id == sched_id,
+                    Notification.recipient_id == tech_id,
+                )
             )
-        )).scalar_one()
+        ).scalar_one()
         assert tech_notif.type == NotificationType.ON_DUE_DATE
 
     # Step 6: Technician completes order (COMPLETED) -> stops notifications even before close!

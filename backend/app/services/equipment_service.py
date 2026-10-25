@@ -1,8 +1,7 @@
-from collections.abc import Sequence
-from datetime import date, datetime, timezone
-from typing import Optional
 import uuid
 import zoneinfo
+from datetime import UTC, date, datetime
+
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -12,14 +11,18 @@ from app.db.models.user import User, UserRole
 from app.errors.exceptions import AppException
 from app.schemas.equipment import EquipmentCreate, EquipmentPatch
 
+
 def get_company_today() -> date:
     tz = zoneinfo.ZoneInfo(settings.app.COMPANY_TIMEZONE)
     return datetime.now(tz).date()
 
+
 get_local_today = get_company_today
+
 
 def escape_like(value: str) -> str:
     return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
 
 class EquipmentService:
     def __init__(self, session: AsyncSession) -> None:
@@ -30,11 +33,11 @@ class EquipmentService:
         current_user: User,
         limit: int = 20,
         offset: int = 0,
-        status_filter: Optional[EquipmentStatus] = None,
-        category: Optional[str] = None,
-        location: Optional[str] = None,
+        status_filter: EquipmentStatus | None = None,
+        category: str | None = None,
+        location: str | None = None,
         include_archived: bool = False,
-        q: Optional[str] = None,
+        q: str | None = None,
     ) -> tuple[list[Equipment], int]:
         if include_archived and current_user.role != UserRole.ENGINEER:
             raise AppException(
@@ -65,7 +68,9 @@ class EquipmentService:
 
         if q is not None and q.strip():
             escaped = f"%{escape_like(q.strip().lower())}%"
-            filter_expr = func.lower(Equipment.name).like(escaped) | func.lower(Equipment.inventory_number).like(escaped)
+            filter_expr = func.lower(Equipment.name).like(escaped) | func.lower(Equipment.inventory_number).like(
+                escaped
+            )
             stmt = stmt.where(filter_expr)
             count_stmt = count_stmt.where(filter_expr)
 
@@ -134,6 +139,7 @@ class EquipmentService:
         await self.session.flush()
 
         from app.services.maintenance_service import MaintenanceService
+
         m_service = MaintenanceService(self.session)
         await m_service.sync_equipment_schedules(eq)
 
@@ -189,9 +195,9 @@ class EquipmentService:
             eq.status = payload.status
             has_changes = True
 
-        old_category = eq.category
         if payload.category is not None and payload.category.strip() != eq.category:
             from app.db.models.work_order import WorkOrder, WorkOrderStatus, WorkOrderType
+
             uncompleted = [
                 WorkOrderStatus.CREATED,
                 WorkOrderStatus.ASSIGNED,
@@ -215,6 +221,7 @@ class EquipmentService:
             has_changes = True
 
             from app.services.maintenance_service import MaintenanceService
+
             await MaintenanceService(self.session).sync_equipment_schedules(eq)
 
         if has_changes:
@@ -235,6 +242,7 @@ class EquipmentService:
             )
 
         from app.db.models.work_order import WorkOrder, WorkOrderStatus
+
         uncompleted = [
             WorkOrderStatus.CREATED,
             WorkOrderStatus.ASSIGNED,
@@ -253,11 +261,12 @@ class EquipmentService:
                 detail="Cannot archive equipment with uncompleted work orders.",
             )
 
-        eq.archived_at = datetime.now(timezone.utc)
+        eq.archived_at = datetime.now(UTC)
         eq.version += 1
         self.session.add(eq)
 
         from app.services.maintenance_service import MaintenanceService
+
         await MaintenanceService(self.session).sync_equipment_schedules(eq)
 
         await self.session.commit()
@@ -280,6 +289,7 @@ class EquipmentService:
         self.session.add(eq)
 
         from app.services.maintenance_service import MaintenanceService
+
         await MaintenanceService(self.session).sync_equipment_schedules(eq)
 
         await self.session.commit()

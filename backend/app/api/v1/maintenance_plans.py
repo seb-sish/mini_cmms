@@ -1,5 +1,6 @@
-from typing import Annotated, Optional
 import uuid
+from typing import Annotated
+
 from fastapi import APIRouter, Depends, Header, Query, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -13,15 +14,16 @@ from app.services.maintenance_service import MaintenanceService
 
 plans_router = APIRouter(prefix="/maintenance-plans", tags=["Maintenance Plans"])
 
+
 @plans_router.get("", response_model=PaginatedResponse)
 async def list_plans(
     db: Annotated[AsyncSession, Depends(get_session)],
     current_user: Annotated[User, Depends(require_role("ENGINEER", "TECHNICIAN"))],
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
-    scope: Optional[PlanScope] = None,
-    is_active: Optional[bool] = None,
-    q: Optional[str] = None,
+    scope: PlanScope | None = None,
+    is_active: bool | None = None,
+    q: str | None = None,
 ) -> PaginatedResponse:
     service = MaintenanceService(db)
     items, total = await service.list_plans(
@@ -39,6 +41,7 @@ async def list_plans(
         offset=offset,
     )
 
+
 @plans_router.post("", response_model=MaintenancePlanRead, status_code=status.HTTP_201_CREATED)
 async def create_plan(
     payload: MaintenancePlanCreate,
@@ -52,6 +55,7 @@ async def create_plan(
     response.headers["ETag"] = f'"{plan.id}:{plan.version}"'
     return MaintenancePlanRead.model_validate(plan)
 
+
 @plans_router.get("/{plan_id}", response_model=MaintenancePlanRead)
 async def get_plan(
     plan_id: uuid.UUID,
@@ -64,6 +68,7 @@ async def get_plan(
     response.headers["ETag"] = f'"{plan.id}:{plan.version}"'
     return MaintenancePlanRead.model_validate(plan)
 
+
 @plans_router.patch("/{plan_id}", response_model=MaintenancePlanRead)
 async def update_plan(
     plan_id: uuid.UUID,
@@ -71,7 +76,7 @@ async def update_plan(
     response: Response,
     db: Annotated[AsyncSession, Depends(get_session)],
     current_user: Annotated[User, Depends(require_role("ENGINEER"))],
-    if_match: Optional[str] = Header(default=None, alias="If-Match"),
+    if_match: str | None = Header(default=None, alias="If-Match"),
 ) -> MaintenancePlanRead:
     expected_version = parse_if_match_version(if_match, str(plan_id))
     service = MaintenanceService(db)

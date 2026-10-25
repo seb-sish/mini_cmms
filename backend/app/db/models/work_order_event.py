@@ -1,11 +1,18 @@
-from datetime import datetime, timezone
-from enum import StrEnum
-from typing import Optional
 import uuid
+from datetime import UTC, datetime
+from enum import StrEnum
+from typing import TYPE_CHECKING, Optional
+
 from sqlalchemy import DateTime, ForeignKey, Index, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+
 from app.db.base import Base, UUIDPrimaryKeyMixin
+
+if TYPE_CHECKING:
+    from app.db.models.user import User
+    from app.db.models.work_order import WorkOrder
+
 
 class WorkOrderEventType(StrEnum):
     CREATED = "CREATED"
@@ -17,6 +24,7 @@ class WorkOrderEventType(StrEnum):
     COMPLETED = "COMPLETED"
     CLOSED = "CLOSED"
     CANCELLED = "CANCELLED"
+
 
 class WorkOrderEvent(Base, UUIDPrimaryKeyMixin):
     __tablename__ = "work_order_events"
@@ -34,22 +42,22 @@ class WorkOrderEvent(Base, UUIDPrimaryKeyMixin):
     )
     occurred_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
-        default=lambda: datetime.now(timezone.utc),
+        default=lambda: datetime.now(UTC),
         nullable=False,
     )
-    from_status: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
-    to_status: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
-    old_assignee_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+    from_status: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    to_status: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    old_assignee_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="RESTRICT"),
         nullable=True,
     )
-    new_assignee_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+    new_assignee_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="RESTRICT"),
         nullable=True,
     )
-    details: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    details: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     work_order: Mapped["WorkOrder"] = relationship("WorkOrder", back_populates="events")
     actor: Mapped["User"] = relationship("User", foreign_keys=[actor_id])

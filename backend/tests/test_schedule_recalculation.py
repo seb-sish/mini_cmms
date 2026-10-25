@@ -1,13 +1,16 @@
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta, timezone
+
 import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.core.security import create_opaque_token, hash_password
 from app.db.models.equipment import Equipment, EquipmentStatus
 from app.db.models.maintenance_plan import MaintenancePlan, PlanScope
 from app.db.models.maintenance_schedule import MaintenanceSchedule
 from app.db.models.session import UserSession
 from app.db.models.user import User, UserRole, UserStatus
+
 
 @pytest.fixture
 async def engineer_auth(db_session: AsyncSession) -> tuple[User, str]:
@@ -26,11 +29,12 @@ async def engineer_auth(db_session: AsyncSession) -> tuple[User, str]:
     session = UserSession(
         user_id=user.id,
         token_hash=t_hash,
-        expires_at=datetime.now(timezone.utc) + timedelta(hours=12),
+        expires_at=datetime.now(UTC) + timedelta(hours=12),
     )
     db_session.add(session)
     await db_session.commit()
     return user, raw_token
+
 
 @pytest.fixture
 async def plan_with_schedule(db_session: AsyncSession) -> tuple[MaintenancePlan, MaintenanceSchedule]:
@@ -71,6 +75,7 @@ async def plan_with_schedule(db_session: AsyncSession) -> tuple[MaintenancePlan,
     await db_session.refresh(sched)
 
     return plan, sched
+
 
 @pytest.mark.asyncio
 async def test_update_plan_interval_recalculates_next_due(async_client: AsyncClient, engineer_auth, plan_with_schedule):

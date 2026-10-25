@@ -1,7 +1,7 @@
-from datetime import date, datetime, timedelta, timezone
-from typing import Optional
 import uuid
-from sqlalchemy import func, or_, select, update
+from datetime import date, timedelta
+
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.equipment import Equipment
@@ -12,6 +12,7 @@ from app.db.models.work_order import WorkOrder, WorkOrderStatus
 from app.errors.exceptions import AppException
 from app.schemas.maintenance import ChecklistItemTemplate, MaintenancePlanCreate, MaintenancePlanUpdate
 from app.services.equipment_service import get_company_today
+
 
 def validate_checklist_items(checklist: list[ChecklistItemTemplate]) -> list[dict]:
     seen_orders = set()
@@ -43,19 +44,22 @@ def validate_checklist_items(checklist: list[ChecklistItemTemplate]) -> list[dic
                 detail=f"Checklist item title '{item_title}' is duplicated.",
             )
         seen_titles.add(norm_title)
-        raw_id = getattr(item, 'id', None)
+        raw_id = getattr(item, "id", None)
         item_id = str(raw_id) if raw_id else str(uuid.uuid4())
-        is_req = getattr(item, 'required', None)
+        is_req = getattr(item, "required", None)
         if is_req is None:
-            is_req = getattr(item, 'is_required', True)
-        cleaned.append({
-            "id": item_id,
-            "order": item.order,
-            "title": norm_title,
-            "required": is_req,
-        })
+            is_req = getattr(item, "is_required", True)
+        cleaned.append(
+            {
+                "id": item_id,
+                "order": item.order,
+                "title": norm_title,
+                "required": is_req,
+            }
+        )
     cleaned.sort(key=lambda x: x["order"])
     return cleaned
+
 
 class MaintenanceService:
     def __init__(self, session: AsyncSession) -> None:
@@ -66,9 +70,9 @@ class MaintenanceService:
         current_user: User,
         limit: int = 20,
         offset: int = 0,
-        scope: Optional[PlanScope] = None,
-        is_active: Optional[bool] = None,
-        q: Optional[str] = None,
+        scope: PlanScope | None = None,
+        is_active: bool | None = None,
+        q: str | None = None,
     ) -> tuple[list[MaintenancePlan], int]:
         stmt = select(MaintenancePlan)
         count_stmt = select(func.count(MaintenancePlan.id))
@@ -104,7 +108,7 @@ class MaintenanceService:
         items = list(items_res.scalars().all())
         return items, total
 
-    async def get_plan_by_id(self, plan_id: uuid.UUID, current_user: Optional[User] = None) -> MaintenancePlan:
+    async def get_plan_by_id(self, plan_id: uuid.UUID, current_user: User | None = None) -> MaintenancePlan:
         stmt = select(MaintenancePlan).where(MaintenancePlan.id == plan_id)
         plan = (await self.session.execute(stmt)).scalar_one_or_none()
         if plan is None:
@@ -199,13 +203,13 @@ class MaintenanceService:
     async def create_plan(self, payload: MaintenancePlanCreate) -> MaintenancePlan:
         cleaned_checklist = validate_checklist_items(payload.checklist)
 
-        enabled = getattr(payload, 'enabled', None)
+        enabled = getattr(payload, "enabled", None)
         if enabled is None:
-            enabled = getattr(payload, 'is_active', True)
+            enabled = getattr(payload, "is_active", True)
         if enabled is None:
             enabled = True
 
-        desc = getattr(payload, 'description', None)
+        desc = getattr(payload, "description", None)
         plan = MaintenancePlan(
             name=payload.name.strip(),
             description=desc.strip() if desc else None,
@@ -221,7 +225,9 @@ class MaintenanceService:
         await self.session.flush()
 
         if payload.scope == PlanScope.EQUIPMENT:
-            eq = (await self.session.execute(select(Equipment).where(Equipment.id == payload.equipment_id))).scalar_one_or_none()
+            eq = (
+                await self.session.execute(select(Equipment).where(Equipment.id == payload.equipment_id))
+            ).scalar_one_or_none()
             if eq is None or eq.archived_at is not None:
                 raise AppException(
                     status=404,
@@ -231,9 +237,7 @@ class MaintenanceService:
                 )
             await self.sync_equipment_schedules(eq)
         elif payload.scope == PlanScope.CATEGORY:
-            eq_stmt = select(Equipment).where(
-                Equipment.category == payload.category.strip()
-            ).order_by(Equipment.id)
+            eq_stmt = select(Equipment).where(Equipment.category == payload.category.strip()).order_by(Equipment.id)
             equipments = (await self.session.execute(eq_stmt)).scalars().all()
             for eq in equipments:
                 await self.sync_equipment_schedules(eq)
@@ -242,7 +246,9 @@ class MaintenanceService:
         await self.session.refresh(plan)
         return plan
 
-    async def update_plan(self, plan_id: uuid.UUID, expected_version: int, payload: MaintenancePlanUpdate) -> MaintenancePlan:
+    async def update_plan(
+        self, plan_id: uuid.UUID, expected_version: int, payload: MaintenancePlanUpdate
+    ) -> MaintenancePlan:
         await self.get_plan_by_id(plan_id)
         stmt = select(MaintenancePlan).where(MaintenancePlan.id == plan_id).with_for_update()
         res = await self.session.execute(stmt)
@@ -266,7 +272,7 @@ class MaintenanceService:
         if payload.name is not None and payload.name.strip() != plan.name:
             plan.name = payload.name.strip()
             has_changes = True
-        desc = getattr(payload, 'description', None)
+        desc = getattr(payload, "description", None)
         if desc is not None:
             clean_desc = desc.strip() if desc else None
             if clean_desc != plan.description:
@@ -277,26 +283,28 @@ class MaintenanceService:
             plan.checklist = validate_checklist_items(payload.checklist)
             has_changes = True
 
-        new_enabled = getattr(payload, 'enabled', None)
+        new_enabled = getattr(payload, "enabled", None)
         if new_enabled is None:
-            new_enabled = getattr(payload, 'is_active', None)
+            new_enabled = getattr(payload, "is_active", None)
         if new_enabled is not None and new_enabled != plan.is_active:
             plan.is_active = new_enabled
             has_changes = True
 
             # Sync schedules for all associated equipment
             sched_eq_subq = (
-                select(MaintenanceSchedule.equipment_id)
-                .where(MaintenanceSchedule.plan_id == plan.id)
-                .scalar_subquery()
+                select(MaintenanceSchedule.equipment_id).where(MaintenanceSchedule.plan_id == plan.id).scalar_subquery()
             )
-            eq_ids_q = select(Equipment).where(
-                or_(
-                    Equipment.category == plan.category,
-                    Equipment.id == plan.equipment_id,
-                    Equipment.id.in_(sched_eq_subq),
+            eq_ids_q = (
+                select(Equipment)
+                .where(
+                    or_(
+                        Equipment.category == plan.category,
+                        Equipment.id == plan.equipment_id,
+                        Equipment.id.in_(sched_eq_subq),
+                    )
                 )
-            ).order_by(Equipment.id)
+                .order_by(Equipment.id)
+            )
             equipments = (await self.session.execute(eq_ids_q)).scalars().all()
             for eq in equipments:
                 await self.sync_equipment_schedules(eq)
@@ -322,12 +330,14 @@ class MaintenanceService:
             if sched_ids:
                 active_wo_q = select(func.count(WorkOrder.id)).where(
                     WorkOrder.schedule_id.in_(sched_ids),
-                    WorkOrder.status.in_([
-                        WorkOrderStatus.CREATED,
-                        WorkOrderStatus.ASSIGNED,
-                        WorkOrderStatus.IN_PROGRESS,
-                        WorkOrderStatus.COMPLETED,
-                    ]),
+                    WorkOrder.status.in_(
+                        [
+                            WorkOrderStatus.CREATED,
+                            WorkOrderStatus.ASSIGNED,
+                            WorkOrderStatus.IN_PROGRESS,
+                            WorkOrderStatus.COMPLETED,
+                        ]
+                    ),
                 )
                 active_wo_count = (await self.session.execute(active_wo_q)).scalar_one()
                 if active_wo_count > 0:
@@ -374,11 +384,11 @@ class MaintenanceService:
         current_user: User,
         limit: int = 20,
         offset: int = 0,
-        plan_id: Optional[uuid.UUID] = None,
-        equipment_id: Optional[uuid.UUID] = None,
-        is_active: Optional[bool] = None,
-        due_from: Optional[date] = None,
-        due_to: Optional[date] = None,
+        plan_id: uuid.UUID | None = None,
+        equipment_id: uuid.UUID | None = None,
+        is_active: bool | None = None,
+        due_from: date | None = None,
+        due_to: date | None = None,
     ) -> tuple[list[tuple[MaintenanceSchedule, bool, bool]], int]:
         if due_from and due_to and due_from > due_to:
             raise AppException(
@@ -420,7 +430,11 @@ class MaintenanceService:
             stmt = stmt.where(MaintenanceSchedule.next_due_on <= due_to)
             count_stmt = count_stmt.where(MaintenanceSchedule.next_due_on <= due_to)
 
-        stmt = stmt.order_by(MaintenanceSchedule.next_due_on.asc(), MaintenanceSchedule.id.asc()).offset(offset).limit(limit)
+        stmt = (
+            stmt.order_by(MaintenanceSchedule.next_due_on.asc(), MaintenanceSchedule.id.asc())
+            .offset(offset)
+            .limit(limit)
+        )
 
         total_res = await self.session.execute(count_stmt)
         total = total_res.scalar_one()
@@ -432,16 +446,16 @@ class MaintenanceService:
         completed_pairs = set()
         if items:
             sched_ids = [s.id for s in items]
-            active_orders_q = select(
-                WorkOrder.schedule_id, WorkOrder.planned_due_on, WorkOrder.status
-            ).where(
+            active_orders_q = select(WorkOrder.schedule_id, WorkOrder.planned_due_on, WorkOrder.status).where(
                 WorkOrder.schedule_id.in_(sched_ids),
-                WorkOrder.status.in_([
-                    WorkOrderStatus.CREATED,
-                    WorkOrderStatus.ASSIGNED,
-                    WorkOrderStatus.IN_PROGRESS,
-                    WorkOrderStatus.COMPLETED,
-                ]),
+                WorkOrder.status.in_(
+                    [
+                        WorkOrderStatus.CREATED,
+                        WorkOrderStatus.ASSIGNED,
+                        WorkOrderStatus.IN_PROGRESS,
+                        WorkOrderStatus.COMPLETED,
+                    ]
+                ),
             )
             rows = (await self.session.execute(active_orders_q)).all()
             for sched_id_val, planned_due, status_val in rows:
@@ -451,9 +465,7 @@ class MaintenanceService:
 
         annotated_items = []
         for s in items:
-            is_overdue, has_current = self.calculate_schedule_flags(
-                s, company_today, active_pairs, completed_pairs
-            )
+            is_overdue, has_current = self.calculate_schedule_flags(s, company_today, active_pairs, completed_pairs)
             annotated_items.append((s, is_overdue, has_current))
 
         return annotated_items, total
@@ -470,7 +482,9 @@ class MaintenanceService:
         is_overdue = bool(schedule.is_active and schedule.next_due_on < company_today and not has_completed)
         return is_overdue, has_current
 
-    async def get_schedule_by_id(self, schedule_id: uuid.UUID, current_user: Optional[User] = None) -> tuple[MaintenanceSchedule, bool, bool]:
+    async def get_schedule_by_id(
+        self, schedule_id: uuid.UUID, current_user: User | None = None
+    ) -> tuple[MaintenanceSchedule, bool, bool]:
         stmt = select(MaintenanceSchedule).where(MaintenanceSchedule.id == schedule_id)
         sched = (await self.session.execute(stmt)).scalar_one_or_none()
         if sched is None:
@@ -503,19 +517,19 @@ class MaintenanceService:
         orders_q = select(WorkOrder.planned_due_on, WorkOrder.status).where(
             WorkOrder.schedule_id == sched.id,
             WorkOrder.planned_due_on == sched.next_due_on,
-            WorkOrder.status.in_([
-                WorkOrderStatus.CREATED,
-                WorkOrderStatus.ASSIGNED,
-                WorkOrderStatus.IN_PROGRESS,
-                WorkOrderStatus.COMPLETED,
-            ]),
+            WorkOrder.status.in_(
+                [
+                    WorkOrderStatus.CREATED,
+                    WorkOrderStatus.ASSIGNED,
+                    WorkOrderStatus.IN_PROGRESS,
+                    WorkOrderStatus.COMPLETED,
+                ]
+            ),
         )
         rows = (await self.session.execute(orders_q)).all()
         active_pairs = {(sched.id, r[0]) for r in rows}
         completed_pairs = {(sched.id, r[0]) for r in rows if r[1] == WorkOrderStatus.COMPLETED}
 
-        is_overdue, has_current = self.calculate_schedule_flags(
-            sched, company_today, active_pairs, completed_pairs
-        )
+        is_overdue, has_current = self.calculate_schedule_flags(sched, company_today, active_pairs, completed_pairs)
 
         return sched, is_overdue, has_current

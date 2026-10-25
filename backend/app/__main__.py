@@ -1,5 +1,6 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+
 import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -10,6 +11,7 @@ from app.config import settings
 from app.db.session import SessionManager
 from app.errors.handlers import register_error_handlers
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # Startup tasks
@@ -17,6 +19,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # Shutdown tasks: gracefully dispose DB engine and disconnect Redis pool
     await SessionManager().close()
     await close_redis_pool()
+
 
 def create_app() -> FastAPI:
     app = FastAPI(
@@ -46,7 +49,9 @@ def create_app() -> FastAPI:
 
     return app
 
+
 app = create_app()
+
 
 def main() -> None:
     uvicorn.run(
@@ -55,6 +60,7 @@ def main() -> None:
         port=settings.app.PORT,
         reload=False,
     )
+
 
 if __name__ == "__main__":
     main()

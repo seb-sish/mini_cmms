@@ -1,10 +1,18 @@
-from datetime import datetime, timezone
-from typing import Optional
 import uuid
-from sqlalchemy import DateTime, ForeignKey, Index, JSON, String, Text
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING
+
+from sqlalchemy import JSON, DateTime, ForeignKey, Index, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+
 from app.db.base import Base, UUIDPrimaryKeyMixin
+
+if TYPE_CHECKING:
+    from app.db.models.equipment import Equipment
+    from app.db.models.user import User
+    from app.db.models.work_order import WorkOrder
+
 
 class WorkHistory(Base, UUIDPrimaryKeyMixin):
     __tablename__ = "work_history"
@@ -19,12 +27,12 @@ class WorkHistory(Base, UUIDPrimaryKeyMixin):
         ForeignKey("equipment.id", ondelete="RESTRICT"),
         nullable=False,
     )
-    plan_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+    plan_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("maintenance_plans.id", ondelete="RESTRICT"),
         nullable=True,
     )
-    fault_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+    fault_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("faults.id", ondelete="RESTRICT"),
         nullable=True,
@@ -42,7 +50,7 @@ class WorkHistory(Base, UUIDPrimaryKeyMixin):
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
-        default=lambda: datetime.now(timezone.utc),
+        default=lambda: datetime.now(UTC),
         nullable=False,
     )
 

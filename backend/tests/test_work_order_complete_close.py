@@ -1,17 +1,19 @@
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta, timezone
+
 import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models.user import User, UserRole, UserStatus
+from app.core.security import create_opaque_token, hash_password
 from app.db.models.equipment import Equipment
 from app.db.models.fault import Fault, FaultStatus
 from app.db.models.maintenance_plan import MaintenancePlan
 from app.db.models.maintenance_schedule import MaintenanceSchedule
-from app.db.models.work_order import WorkOrder, WorkOrderType, WorkOrderStatus, WorkOrderPriority
-from app.core.security import hash_password, create_opaque_token
 from app.db.models.session import UserSession
+from app.db.models.user import User, UserRole, UserStatus
+from app.db.models.work_order import WorkOrder, WorkOrderPriority, WorkOrderStatus, WorkOrderType
 from app.services.equipment_service import get_company_today
+
 
 @pytest.fixture
 async def technician_user(db_session: AsyncSession) -> User:
@@ -27,17 +29,19 @@ async def technician_user(db_session: AsyncSession) -> User:
     await db_session.refresh(tech)
     return tech
 
+
 @pytest.fixture
 async def tech_token(db_session: AsyncSession, technician_user: User) -> str:
     raw_token, token_hash = create_opaque_token()
     session = UserSession(
         user_id=technician_user.id,
         token_hash=token_hash,
-        expires_at=datetime(2099, 1, 1, tzinfo=timezone.utc),
+        expires_at=datetime(2099, 1, 1, tzinfo=UTC),
     )
     db_session.add(session)
     await db_session.commit()
     return raw_token
+
 
 @pytest.fixture
 async def engineer_token(db_session: AsyncSession) -> str:
@@ -54,11 +58,12 @@ async def engineer_token(db_session: AsyncSession) -> str:
     session = UserSession(
         user_id=user.id,
         token_hash=token_hash,
-        expires_at=datetime(2099, 1, 1, tzinfo=timezone.utc),
+        expires_at=datetime(2099, 1, 1, tzinfo=UTC),
     )
     db_session.add(session)
     await db_session.commit()
     return raw_token
+
 
 @pytest.fixture
 async def in_progress_repair_order(
@@ -117,6 +122,7 @@ async def in_progress_repair_order(
         headers={"Authorization": f"Bearer {tech_token}"},
     )
     return wo
+
 
 @pytest.fixture
 async def in_progress_planned_order(
@@ -190,6 +196,7 @@ async def in_progress_planned_order(
     )
     return start_res.json()
 
+
 @pytest.mark.asyncio
 async def test_repair_order_complete_and_close(
     async_client: AsyncClient,
@@ -241,6 +248,7 @@ async def test_repair_order_complete_and_close(
     assert len(history_items) == 1
     assert history_items[0]["work_order_id"] == wo_id
     assert history_items[0]["result"] == "Replaced faulty valve"
+
 
 @pytest.mark.asyncio
 async def test_planned_order_requires_checklist_and_advances_schedule(
@@ -300,6 +308,7 @@ async def test_planned_order_requires_checklist_and_advances_schedule(
     assert sched_data["last_completed_on"] == str(today)
     assert sched_data["next_due_on"] == str(today + timedelta(days=30))
 
+
 @pytest.mark.asyncio
 async def test_close_work_order_advances_from_completed_date_yesterday(
     async_client: AsyncClient,
@@ -309,11 +318,12 @@ async def test_close_work_order_advances_from_completed_date_yesterday(
     db_session: AsyncSession,
 ):
     import uuid
+
     wo_id = uuid.UUID(in_progress_planned_order["id"])
 
     # Complete work order and explicitly set completed_at to yesterday
     wo = await db_session.get(WorkOrder, wo_id)
-    yesterday_dt = datetime.now(timezone.utc) - timedelta(days=1)
+    yesterday_dt = datetime.now(UTC) - timedelta(days=1)
     wo.status = WorkOrderStatus.COMPLETED
     wo.completed_at = yesterday_dt
     wo.result = "Completed yesterday"
@@ -333,6 +343,6 @@ async def test_close_work_order_advances_from_completed_date_yesterday(
     assert sched_res.status_code == 200
     sched_data = sched_res.json()
 
-    company_yesterday = (get_company_today() - timedelta(days=1))
+    company_yesterday = get_company_today() - timedelta(days=1)
     assert sched_data["last_completed_on"] == str(company_yesterday)
     assert sched_data["next_due_on"] == str(company_yesterday + timedelta(days=30))

@@ -1,6 +1,7 @@
 import asyncio
-from datetime import date, datetime, timedelta, timezone
 import uuid
+from datetime import date, datetime, timedelta, timezone
+
 import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -47,9 +48,7 @@ async def test_checklist_template_allows_different_case_titles():
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_category_change_sync_schedules_a_b_a(
-    session_factory: async_sessionmaker[AsyncSession]
-):
+async def test_category_change_sync_schedules_a_b_a(session_factory: async_sessionmaker[AsyncSession]):
     eng_id = uuid.uuid4()
     plan_a_id = uuid.uuid4()
     plan_b_id = uuid.uuid4()
@@ -113,7 +112,11 @@ async def test_category_change_sync_schedules_a_b_a(
 
     # Verify Schedule A is created and active
     async with session_factory() as s:
-        scheds = (await s.execute(select(MaintenanceSchedule).where(MaintenanceSchedule.equipment_id == eq_id))).scalars().all()
+        scheds = (
+            (await s.execute(select(MaintenanceSchedule).where(MaintenanceSchedule.equipment_id == eq_id)))
+            .scalars()
+            .all()
+        )
         assert len(scheds) == 1
         sched_a = scheds[0]
         assert sched_a.plan_id == plan_a_id
@@ -134,7 +137,11 @@ async def test_category_change_sync_schedules_a_b_a(
 
     # Verify Schedule A is now inactive (same id and due date preserved) and Schedule B is created and active
     async with session_factory() as s:
-        scheds = (await s.execute(select(MaintenanceSchedule).where(MaintenanceSchedule.equipment_id == eq_id))).scalars().all()
+        scheds = (
+            (await s.execute(select(MaintenanceSchedule).where(MaintenanceSchedule.equipment_id == eq_id)))
+            .scalars()
+            .all()
+        )
         assert len(scheds) == 2
         by_plan = {sc.plan_id: sc for sc in scheds}
         assert by_plan[plan_a_id].id == sched_a_id
@@ -158,7 +165,11 @@ async def test_category_change_sync_schedules_a_b_a(
 
     # Verify: exactly 2 schedules exist in DB; Schedule A is active again with same id & due; Schedule B is inactive
     async with session_factory() as s:
-        scheds = (await s.execute(select(MaintenanceSchedule).where(MaintenanceSchedule.equipment_id == eq_id))).scalars().all()
+        scheds = (
+            (await s.execute(select(MaintenanceSchedule).where(MaintenanceSchedule.equipment_id == eq_id)))
+            .scalars()
+            .all()
+        )
         assert len(scheds) == 2
         by_plan = {sc.plan_id: sc for sc in scheds}
         assert by_plan[plan_a_id].id == sched_a_id
@@ -172,7 +183,7 @@ async def test_category_change_sync_schedules_a_b_a(
 @pytest.mark.integration
 @pytest.mark.asyncio
 async def test_category_change_allowed_with_repair_blocked_with_planned(
-    session_factory: async_sessionmaker[AsyncSession]
+    session_factory: async_sessionmaker[AsyncSession],
 ):
     eng_id = uuid.uuid4()
     tech_id = uuid.uuid4()
@@ -283,10 +294,14 @@ async def test_category_change_allowed_with_repair_blocked_with_planned(
     # 3. Create PLANNED work order on equipment
     async with session_factory() as s:
         eng = (await s.execute(select(User).where(User.id == eng_id))).scalar_one()
-        sched = (await s.execute(select(MaintenanceSchedule).where(
-            MaintenanceSchedule.equipment_id == eq_id,
-            MaintenanceSchedule.plan_id == plan_id,
-        ))).scalar_one()
+        sched = (
+            await s.execute(
+                select(MaintenanceSchedule).where(
+                    MaintenanceSchedule.equipment_id == eq_id,
+                    MaintenanceSchedule.plan_id == plan_id,
+                )
+            )
+        ).scalar_one()
         wo_planned = await WorkOrderService.create_work_order(
             s,
             eng,
@@ -320,7 +335,7 @@ async def test_category_change_allowed_with_repair_blocked_with_planned(
 @pytest.mark.integration
 @pytest.mark.asyncio
 async def test_archived_equipment_schedules_remain_inactive_and_restore_syncs(
-    session_factory: async_sessionmaker[AsyncSession]
+    session_factory: async_sessionmaker[AsyncSession],
 ):
     eng_id = uuid.uuid4()
     plan_id = uuid.uuid4()
@@ -366,7 +381,9 @@ async def test_archived_equipment_schedules_remain_inactive_and_restore_syncs(
 
     # Schedule should be active
     async with session_factory() as s:
-        sc = (await s.execute(select(MaintenanceSchedule).where(MaintenanceSchedule.equipment_id == eq_id))).scalar_one()
+        sc = (
+            await s.execute(select(MaintenanceSchedule).where(MaintenanceSchedule.equipment_id == eq_id))
+        ).scalar_one()
         assert sc.is_active is True
 
     # Archive equipment
@@ -377,7 +394,9 @@ async def test_archived_equipment_schedules_remain_inactive_and_restore_syncs(
 
     # Schedule must now be inactive
     async with session_factory() as s:
-        sc = (await s.execute(select(MaintenanceSchedule).where(MaintenanceSchedule.equipment_id == eq_id))).scalar_one()
+        sc = (
+            await s.execute(select(MaintenanceSchedule).where(MaintenanceSchedule.equipment_id == eq_id))
+        ).scalar_one()
         assert sc.is_active is False
 
     # Create another plan while equipment is archived
@@ -405,7 +424,11 @@ async def test_archived_equipment_schedules_remain_inactive_and_restore_syncs(
 
     # Both schedules must now exist and be active
     async with session_factory() as s:
-        scheds = (await s.execute(select(MaintenanceSchedule).where(MaintenanceSchedule.equipment_id == eq_id))).scalars().all()
+        scheds = (
+            (await s.execute(select(MaintenanceSchedule).where(MaintenanceSchedule.equipment_id == eq_id)))
+            .scalars()
+            .all()
+        )
         assert len(scheds) == 2
         for sc in scheds:
             assert sc.is_active is True

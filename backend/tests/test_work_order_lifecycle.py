@@ -1,15 +1,17 @@
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime, timezone
+
 import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models.user import User, UserRole, UserStatus
+from app.core.security import create_opaque_token, hash_password
 from app.db.models.equipment import Equipment
 from app.db.models.maintenance_plan import MaintenancePlan
 from app.db.models.maintenance_schedule import MaintenanceSchedule
-from app.db.models.work_order import WorkOrder, WorkOrderType, WorkOrderStatus, WorkOrderPriority
-from app.core.security import hash_password, create_opaque_token
 from app.db.models.session import UserSession
+from app.db.models.user import User, UserRole, UserStatus
+from app.db.models.work_order import WorkOrder, WorkOrderPriority, WorkOrderStatus, WorkOrderType
+
 
 @pytest.fixture
 async def technician_user(db_session: AsyncSession) -> User:
@@ -25,6 +27,7 @@ async def technician_user(db_session: AsyncSession) -> User:
     await db_session.refresh(tech)
     return tech
 
+
 @pytest.fixture
 async def technician2_user(db_session: AsyncSession) -> User:
     tech = User(
@@ -39,17 +42,19 @@ async def technician2_user(db_session: AsyncSession) -> User:
     await db_session.refresh(tech)
     return tech
 
+
 @pytest.fixture
 async def tech_token(db_session: AsyncSession, technician_user: User) -> str:
     raw_token, token_hash = create_opaque_token()
     session = UserSession(
         user_id=technician_user.id,
         token_hash=token_hash,
-        expires_at=datetime(2099, 1, 1, tzinfo=timezone.utc),
+        expires_at=datetime(2099, 1, 1, tzinfo=UTC),
     )
     db_session.add(session)
     await db_session.commit()
     return raw_token
+
 
 @pytest.fixture
 async def tech2_token(db_session: AsyncSession, technician2_user: User) -> str:
@@ -57,11 +62,12 @@ async def tech2_token(db_session: AsyncSession, technician2_user: User) -> str:
     session = UserSession(
         user_id=technician2_user.id,
         token_hash=token_hash,
-        expires_at=datetime(2099, 1, 1, tzinfo=timezone.utc),
+        expires_at=datetime(2099, 1, 1, tzinfo=UTC),
     )
     db_session.add(session)
     await db_session.commit()
     return raw_token
+
 
 @pytest.fixture
 async def engineer_token(db_session: AsyncSession) -> str:
@@ -78,11 +84,12 @@ async def engineer_token(db_session: AsyncSession) -> str:
     session = UserSession(
         user_id=user.id,
         token_hash=token_hash,
-        expires_at=datetime(2099, 1, 1, tzinfo=timezone.utc),
+        expires_at=datetime(2099, 1, 1, tzinfo=UTC),
     )
     db_session.add(session)
     await db_session.commit()
     return raw_token
+
 
 @pytest.fixture
 async def sample_planned_order(
@@ -137,6 +144,7 @@ async def sample_planned_order(
     )
     assert res.status_code == 201
     return res.json()
+
 
 @pytest.mark.asyncio
 async def test_work_order_fsm_assign_start_and_checklist(

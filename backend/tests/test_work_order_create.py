@@ -1,17 +1,19 @@
-from datetime import date, datetime, timezone
 import uuid
+from datetime import UTC, date, datetime, timezone
+
 import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models.user import User, UserRole, UserStatus
+from app.core.security import create_opaque_token, hash_password
 from app.db.models.equipment import Equipment, EquipmentStatus
 from app.db.models.fault import Fault, FaultStatus
 from app.db.models.maintenance_plan import MaintenancePlan
 from app.db.models.maintenance_schedule import MaintenanceSchedule
-from app.db.models.work_order import WorkOrder, WorkOrderType, WorkOrderStatus, WorkOrderPriority
-from app.core.security import hash_password, create_opaque_token
 from app.db.models.session import UserSession
+from app.db.models.user import User, UserRole, UserStatus
+from app.db.models.work_order import WorkOrder, WorkOrderPriority, WorkOrderStatus, WorkOrderType
+
 
 @pytest.fixture
 async def operator_token(db_session: AsyncSession) -> str:
@@ -28,11 +30,12 @@ async def operator_token(db_session: AsyncSession) -> str:
     session = UserSession(
         user_id=user.id,
         token_hash=token_hash,
-        expires_at=datetime(2099, 1, 1, tzinfo=timezone.utc),
+        expires_at=datetime(2099, 1, 1, tzinfo=UTC),
     )
     db_session.add(session)
     await db_session.commit()
     return raw_token
+
 
 @pytest.fixture
 async def engineer_token(db_session: AsyncSession) -> str:
@@ -49,11 +52,12 @@ async def engineer_token(db_session: AsyncSession) -> str:
     session = UserSession(
         user_id=user.id,
         token_hash=token_hash,
-        expires_at=datetime(2099, 1, 1, tzinfo=timezone.utc),
+        expires_at=datetime(2099, 1, 1, tzinfo=UTC),
     )
     db_session.add(session)
     await db_session.commit()
     return raw_token
+
 
 @pytest.fixture
 async def sample_equipment(db_session: AsyncSession) -> Equipment:
@@ -69,8 +73,11 @@ async def sample_equipment(db_session: AsyncSession) -> Equipment:
     await db_session.refresh(eq)
     return eq
 
+
 @pytest.fixture
-async def sample_plan_and_schedule(db_session: AsyncSession, sample_equipment: Equipment) -> tuple[MaintenancePlan, MaintenanceSchedule]:
+async def sample_plan_and_schedule(
+    db_session: AsyncSession, sample_equipment: Equipment
+) -> tuple[MaintenancePlan, MaintenanceSchedule]:
     plan = MaintenancePlan(
         name="Motor Monthly Maintenance",
         description="Regular inspection",
@@ -97,6 +104,7 @@ async def sample_plan_and_schedule(db_session: AsyncSession, sample_equipment: E
     await db_session.refresh(schedule)
     return plan, schedule
 
+
 @pytest.mark.asyncio
 async def test_operator_create_repair_order(
     async_client: AsyncClient,
@@ -104,9 +112,7 @@ async def test_operator_create_repair_order(
     sample_equipment: Equipment,
     db_session: AsyncSession,
 ):
-    user = (await db_session.execute(
-        User.__table__.select().where(User.login == "operator1")
-    )).first()
+    user = (await db_session.execute(User.__table__.select().where(User.login == "operator1"))).first()
 
     fault = Fault(
         equipment_id=sample_equipment.id,
@@ -156,6 +162,7 @@ async def test_operator_create_repair_order(
     )
     assert fail_res.status_code == 403
     assert fail_res.json()["code"] == "ACCESS_DENIED"
+
 
 @pytest.mark.asyncio
 async def test_engineer_create_planned_order_snapshots_checklist(

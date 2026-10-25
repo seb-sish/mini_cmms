@@ -1,10 +1,16 @@
-from datetime import datetime, timezone
-from typing import Optional
 import uuid
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING
+
 from sqlalchemy import DateTime, ForeignKey, Index, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+
 from app.db.base import Base, UUIDPrimaryKeyMixin
+
+if TYPE_CHECKING:
+    from app.db.models.user import User
+
 
 class UserSession(Base, UUIDPrimaryKeyMixin):
     __tablename__ = "user_sessions"
@@ -16,10 +22,10 @@ class UserSession(Base, UUIDPrimaryKeyMixin):
     )
     token_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    revoked_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
-        default=lambda: datetime.now(timezone.utc),
+        default=lambda: datetime.now(UTC),
         nullable=False,
     )
 

@@ -1,14 +1,16 @@
-from datetime import date, datetime, timezone
 import uuid
+from datetime import UTC, date, datetime, timezone
+
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models.user import User, UserRole, UserStatus
-from app.db.models.equipment import Equipment
-from app.db.models.work_order import WorkOrder, WorkOrderType, WorkOrderStatus, WorkOrderPriority, WorkChecklistItem
-from app.db.models.work_order_event import WorkOrderEvent, WorkOrderEventType
-from app.db.models.work_history import WorkHistory
 from app.core.security import hash_password
+from app.db.models.equipment import Equipment
+from app.db.models.user import User, UserRole, UserStatus
+from app.db.models.work_history import WorkHistory
+from app.db.models.work_order import WorkChecklistItem, WorkOrder, WorkOrderPriority, WorkOrderStatus, WorkOrderType
+from app.db.models.work_order_event import WorkOrderEvent, WorkOrderEventType
+
 
 @pytest.mark.asyncio
 async def test_work_order_and_relations(db_session: AsyncSession):
@@ -62,7 +64,7 @@ async def test_work_order_and_relations(db_session: AsyncSession):
         actor_id=user.id,
         details="Work order created",
     )
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     history = WorkHistory(
         equipment_id=equipment.id,
         work_order_id=wo.id,

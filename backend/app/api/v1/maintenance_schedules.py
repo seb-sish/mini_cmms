@@ -1,6 +1,7 @@
-from datetime import date
-from typing import Annotated, Optional
 import uuid
+from datetime import date
+from typing import Annotated
+
 from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -13,17 +14,18 @@ from app.services.maintenance_service import MaintenanceService
 
 schedules_router = APIRouter(prefix="/maintenance-schedules", tags=["Maintenance Schedules"])
 
+
 @schedules_router.get("", response_model=PaginatedResponse)
 async def list_schedules(
     db: Annotated[AsyncSession, Depends(get_session)],
     current_user: Annotated[User, Depends(require_role("ENGINEER", "TECHNICIAN"))],
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
-    plan_id: Optional[uuid.UUID] = None,
-    equipment_id: Optional[uuid.UUID] = None,
-    is_active: Optional[bool] = None,
-    due_from: Optional[date] = None,
-    due_to: Optional[date] = None,
+    plan_id: uuid.UUID | None = None,
+    equipment_id: uuid.UUID | None = None,
+    is_active: bool | None = None,
+    due_from: date | None = None,
+    due_to: date | None = None,
 ) -> PaginatedResponse:
     service = MaintenanceService(db)
     items, total = await service.list_schedules(
@@ -49,6 +51,7 @@ async def list_schedules(
         limit=limit,
         offset=offset,
     )
+
 
 @schedules_router.get("/{schedule_id}", response_model=MaintenanceScheduleRead)
 async def get_schedule(

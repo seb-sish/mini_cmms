@@ -1,15 +1,16 @@
-from datetime import datetime, timedelta, timezone
-from typing import Optional
+from datetime import UTC, datetime, timedelta
+
+import redis.asyncio as aioredis
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
-import redis.asyncio as aioredis
 
 from app.config import settings
 from app.core.rate_limiter import acquire_rate_limit_locks, check_rate_limit, record_failed_attempt
-from app.core.security import create_opaque_token, hash_token, verify_password
+from app.core.security import create_opaque_token, verify_password
 from app.db.models.session import UserSession
 from app.db.models.user import User, UserStatus
 from app.errors.exceptions import AppException
+
 
 class AuthService:
     def __init__(self, session: AsyncSession, redis_client: aioredis.Redis) -> None:
@@ -24,12 +25,14 @@ class AuthService:
         async with acquire_rate_limit_locks(self.redis, [ip_key, login_key]):
             # Check rate limits for both IP and login
             retry_ip = await check_rate_limit(
-                self.redis, ip_key,
+                self.redis,
+                ip_key,
                 max_attempts=settings.security.RATE_LIMIT_MAX_ATTEMPTS,
                 window_seconds=settings.security.RATE_LIMIT_WINDOW_SECONDS,
             )
             retry_login = await check_rate_limit(
-                self.redis, login_key,
+                self.redis,
+                login_key,
                 max_attempts=settings.security.RATE_LIMIT_MAX_ATTEMPTS,
                 window_seconds=settings.security.RATE_LIMIT_WINDOW_SECONDS,
             )
@@ -51,7 +54,7 @@ class AuthService:
                 .execution_options(populate_existing=True)
             )
             result = await self.session.execute(stmt)
-            user: Optional[User] = result.scalar_one_or_none()
+            user: User | None = result.scalar_one_or_none()
 
             # Check credentials and status (BLOCKED returns same 401 INVALID_CREDENTIALS per spec Q5)
             if user is None or user.status != UserStatus.ACTIVE or not verify_password(password, user.password_hash):
@@ -67,7 +70,7 @@ class AuthService:
 
             # Create session
             raw_token, token_hash = create_opaque_token()
-            expires_at = datetime.now(timezone.utc) + timedelta(hours=settings.security.TOKEN_EXPIRE_HOURS)
+            expires_at = datetime.now(UTC) + timedelta(hours=settings.security.TOKEN_EXPIRE_HOURS)
 
             user_session = UserSession(
                 user_id=user.id,
@@ -83,7 +86,7 @@ class AuthService:
         stmt = (
             update(UserSession)
             .where(UserSession.token_hash == token_hash, UserSession.revoked_at.is_(None))
-            .values(revoked_at=datetime.now(timezone.utc))
+            .values(revoked_at=datetime.now(UTC))
         )
         await self.session.execute(stmt)
         await self.session.commit()
@@ -92,7 +95,7 @@ class AuthService:
         stmt = (
             update(UserSession)
             .where(UserSession.user_id == user_id, UserSession.revoked_at.is_(None))
-            .values(revoked_at=datetime.now(timezone.utc))
+            .values(revoked_at=datetime.now(UTC))
         )
         await self.session.execute(stmt)
         if commit:

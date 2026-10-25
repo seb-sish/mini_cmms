@@ -5,21 +5,27 @@ Revises: 002_equipment_table
 Create Date: 2026-10-24 22:18:00.000000
 
 """
-from typing import Sequence, Union
-from alembic import op
+
+from collections.abc import Sequence
+from typing import Union
+
 import sqlalchemy as sa
+from alembic import op
 from sqlalchemy.dialects.postgresql import UUID
 
 revision: str = "003_faults_table"
-down_revision: Union[str, None] = "002_equipment_table"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = "002_equipment_table"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
+
 
 def upgrade() -> None:
     op.create_table(
         "faults",
         sa.Column("id", UUID(as_uuid=True), primary_key=True),
-        sa.Column("equipment_id", UUID(as_uuid=True), sa.ForeignKey("equipment.id", ondelete="RESTRICT"), nullable=False),
+        sa.Column(
+            "equipment_id", UUID(as_uuid=True), sa.ForeignKey("equipment.id", ondelete="RESTRICT"), nullable=False
+        ),
         sa.Column("description", sa.Text(), nullable=False),
         sa.Column("detected_on", sa.Date(), nullable=False),
         sa.Column("severity", sa.String(20), nullable=False, server_default="MEDIUM"),
@@ -34,6 +40,7 @@ def upgrade() -> None:
     op.create_index("ix_faults_severity", "faults", ["severity"])
     op.create_index("ix_faults_author_id", "faults", ["author_id"])
     op.create_index("ix_faults_detected_on", "faults", ["detected_on"])
+
 
 def downgrade() -> None:
     op.drop_table("faults")

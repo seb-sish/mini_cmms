@@ -1,5 +1,5 @@
-from typing import Optional
 import uuid
+
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -7,13 +7,14 @@ from app.db.models.notification import Notification, NotificationType
 from app.db.models.user import User, UserRole
 from app.errors.handlers import AppException
 
+
 class NotificationService:
     @classmethod
     async def list_notifications(
         cls,
         session: AsyncSession,
         current_user: User,
-        type: Optional[NotificationType] = None,
+        type: NotificationType | None = None,
         limit: int = 20,
         offset: int = 0,
     ) -> tuple[list[Notification], int]:

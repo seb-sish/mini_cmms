@@ -1,12 +1,11 @@
-from datetime import date, datetime, timezone
-from typing import Any
 import uuid
+from datetime import UTC, datetime
+from typing import Any
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.db.models.equipment import Equipment
-from app.db.models.maintenance_plan import MaintenancePlan
 from app.db.models.maintenance_schedule import MaintenanceSchedule
 from app.db.models.notification import Notification, NotificationType
 from app.db.models.user import User, UserRole, UserStatus
@@ -52,7 +51,7 @@ async def generate_maintenance_notifications(ctx: dict[str, Any]) -> int:
                 selectinload(MaintenanceSchedule.plan),
                 selectinload(MaintenanceSchedule.equipment),
             )
-            .where(MaintenanceSchedule.is_active == True)
+            .where(MaintenanceSchedule.is_active.is_(True))
         )
         schedules = (await session.execute(sched_q)).scalars().all()
 
@@ -109,7 +108,7 @@ async def generate_maintenance_notifications(ctx: dict[str, Any]) -> int:
                 recipients.append(assigned_tech)
 
             insert_fn = _get_insert_class(session)
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             for recipient in recipients:
                 stmt = (
                     insert_fn(Notification)
@@ -124,9 +123,7 @@ async def generate_maintenance_notifications(ctx: dict[str, Any]) -> int:
                         message=message,
                         created_at=now,
                     )
-                    .on_conflict_do_nothing(
-                        index_elements=["schedule_id", "planned_due_on", "type", "recipient_id"]
-                    )
+                    .on_conflict_do_nothing(index_elements=["schedule_id", "planned_due_on", "type", "recipient_id"])
                 )
                 res = await session.execute(stmt)
                 if res.rowcount and res.rowcount > 0:

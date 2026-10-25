@@ -1,7 +1,7 @@
-from datetime import date
-from typing import Optional
 import uuid
-from fastapi import APIRouter, Depends, Query, Response, status
+from datetime import date
+
+from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import require_role
@@ -12,16 +12,17 @@ from app.services.work_order_service import WorkHistoryService
 
 work_history_router = APIRouter(prefix="/work-history", tags=["Work History"])
 
+
 @work_history_router.get(
     "",
     response_model=WorkHistoryPage,
     status_code=status.HTTP_200_OK,
 )
 async def list_work_history(
-    equipment_id: Optional[uuid.UUID] = Query(None),
-    technician_id: Optional[uuid.UUID] = Query(None),
-    completed_from: Optional[date] = Query(None),
-    completed_to: Optional[date] = Query(None),
+    equipment_id: uuid.UUID | None = Query(None),
+    technician_id: uuid.UUID | None = Query(None),
+    completed_from: date | None = Query(None),
+    completed_to: date | None = Query(None),
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
     session: AsyncSession = Depends(get_session),
@@ -43,6 +44,7 @@ async def list_work_history(
         limit=limit,
         offset=offset,
     )
+
 
 @work_history_router.get(
     "/{history_id}",

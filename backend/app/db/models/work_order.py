@@ -1,15 +1,26 @@
+import uuid
 from datetime import date, datetime
 from enum import StrEnum
-from typing import Optional
-import uuid
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Index, Integer, JSON, String, Text, text
+from typing import TYPE_CHECKING, Optional
+
+from sqlalchemy import JSON, Boolean, Date, DateTime, ForeignKey, Index, Integer, String, Text, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+
 from app.db.base import Base, TimestampMixin, UUIDPrimaryKeyMixin, VersionMixin
+
+if TYPE_CHECKING:
+    from app.db.models.equipment import Equipment
+    from app.db.models.fault import Fault
+    from app.db.models.maintenance_schedule import MaintenanceSchedule
+    from app.db.models.user import User
+    from app.db.models.work_order_event import WorkOrderEvent
+
 
 class WorkOrderType(StrEnum):
     REPAIR = "REPAIR"
     PLANNED = "PLANNED"
+
 
 class WorkOrderStatus(StrEnum):
     CREATED = "CREATED"
@@ -19,11 +30,13 @@ class WorkOrderStatus(StrEnum):
     CLOSED = "CLOSED"
     CANCELLED = "CANCELLED"
 
+
 class WorkOrderPriority(StrEnum):
     LOW = "LOW"
     NORMAL = "NORMAL"
     HIGH = "HIGH"
     CRITICAL = "CRITICAL"
+
 
 class WorkOrder(Base, UUIDPrimaryKeyMixin, TimestampMixin, VersionMixin):
     __tablename__ = "work_orders"
@@ -40,45 +53,45 @@ class WorkOrder(Base, UUIDPrimaryKeyMixin, TimestampMixin, VersionMixin):
         ForeignKey("equipment.id", ondelete="RESTRICT"),
         nullable=False,
     )
-    fault_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+    fault_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("faults.id", ondelete="RESTRICT"),
         nullable=True,
     )
-    schedule_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+    schedule_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("maintenance_schedules.id", ondelete="RESTRICT"),
         nullable=True,
     )
-    planned_due_on: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    planned_due_on: Mapped[date | None] = mapped_column(Date, nullable=True)
 
     author_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="RESTRICT"),
         nullable=False,
     )
-    assignee_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+    assignee_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="RESTRICT"),
         nullable=True,
     )
 
-    started_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
-    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
-    closed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
-    closed_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    closed_by: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="RESTRICT"),
         nullable=True,
     )
-    cancelled_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
-    cancelled_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+    cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    cancelled_by: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="RESTRICT"),
         nullable=True,
     )
-    cancellation_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    result: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    cancellation_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    result: Mapped[str | None] = mapped_column(Text, nullable=True)
     replaced_parts: Mapped[list[str]] = mapped_column(
         JSON().with_variant(JSONB, "postgresql"), default=list, nullable=False
     )
@@ -90,10 +103,16 @@ class WorkOrder(Base, UUIDPrimaryKeyMixin, TimestampMixin, VersionMixin):
     assignee: Mapped[Optional["User"]] = relationship("User", foreign_keys=[assignee_id])
 
     checklist: Mapped[list["WorkChecklistItem"]] = relationship(
-        "WorkChecklistItem", back_populates="work_order", cascade="all, delete-orphan", order_by="WorkChecklistItem.order"
+        "WorkChecklistItem",
+        back_populates="work_order",
+        cascade="all, delete-orphan",
+        order_by="WorkChecklistItem.order",
     )
     events: Mapped[list["WorkOrderEvent"]] = relationship(
-        "WorkOrderEvent", back_populates="work_order", cascade="all, delete-orphan", order_by="WorkOrderEvent.occurred_at"
+        "WorkOrderEvent",
+        back_populates="work_order",
+        cascade="all, delete-orphan",
+        order_by="WorkOrderEvent.occurred_at",
     )
 
     __table_args__ = (
@@ -109,17 +128,24 @@ class WorkOrder(Base, UUIDPrimaryKeyMixin, TimestampMixin, VersionMixin):
             "uq_work_orders_active_fault",
             "fault_id",
             unique=True,
-            postgresql_where=text("fault_id IS NOT NULL AND status IN ('CREATED', 'ASSIGNED', 'IN_PROGRESS', 'COMPLETED')"),
+            postgresql_where=text(
+                "fault_id IS NOT NULL AND status IN ('CREATED', 'ASSIGNED', 'IN_PROGRESS', 'COMPLETED')"
+            ),
             sqlite_where=text("fault_id IS NOT NULL AND status IN ('CREATED', 'ASSIGNED', 'IN_PROGRESS', 'COMPLETED')"),
         ),
         Index(
             "uq_work_orders_active_schedule",
             "schedule_id",
             unique=True,
-            postgresql_where=text("schedule_id IS NOT NULL AND status IN ('CREATED', 'ASSIGNED', 'IN_PROGRESS', 'COMPLETED')"),
-            sqlite_where=text("schedule_id IS NOT NULL AND status IN ('CREATED', 'ASSIGNED', 'IN_PROGRESS', 'COMPLETED')"),
+            postgresql_where=text(
+                "schedule_id IS NOT NULL AND status IN ('CREATED', 'ASSIGNED', 'IN_PROGRESS', 'COMPLETED')"
+            ),
+            sqlite_where=text(
+                "schedule_id IS NOT NULL AND status IN ('CREATED', 'ASSIGNED', 'IN_PROGRESS', 'COMPLETED')"
+            ),
         ),
     )
+
 
 class WorkChecklistItem(Base, UUIDPrimaryKeyMixin):
     __tablename__ = "work_checklist_items"
@@ -133,11 +159,9 @@ class WorkChecklistItem(Base, UUIDPrimaryKeyMixin):
     title: Mapped[str] = mapped_column(String(300), nullable=False)
     required: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     checked: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-    checked_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
-    comment: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    comment: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     work_order: Mapped["WorkOrder"] = relationship("WorkOrder", back_populates="checklist")
 
-    __table_args__ = (
-        Index("ix_work_checklist_items_work_order_id", work_order_id),
-    )
+    __table_args__ = (Index("ix_work_checklist_items_work_order_id", work_order_id),)

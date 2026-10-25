@@ -22,7 +22,7 @@ def openapi_spec() -> dict[str, Any]:
     spec_path = project_root / "docs" / "Mini_CMMS_OpenAPI_3.1.1.yaml"
     if not spec_path.exists():
         raise FileNotFoundError(f"OpenAPI spec file not found at {spec_path}")
-    
+
     spec = yaml.load(spec_path.read_text(encoding="utf-8"), Loader=UniqueKeyLoader)
     validate(spec)
     return spec
@@ -42,9 +42,10 @@ def schema_validator(
     openapi_spec: dict[str, Any], format_checker: FormatChecker
 ) -> Callable[[dict[str, Any], Any], list[str]]:
     """Returns a validator function that validates payload against an OpenAPI schema or sub-schema."""
+
     def _validate(schema: dict[str, Any], payload: Any) -> list[str]:
         wrapped = {"allOf": [schema], "components": openapi_spec.get("components", {})}
         validator = Draft202012Validator(wrapped, format_checker=format_checker)
         return [f"{list(err.absolute_path)}: {err.message}" for err in validator.iter_errors(payload)]
-    
+
     return _validate

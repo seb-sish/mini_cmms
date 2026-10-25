@@ -1,12 +1,14 @@
-from app.services.equipment_service import get_company_today
 from datetime import date, datetime, timedelta, timezone
+
 import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models.user import User, UserRole, UserStatus
 from app.core.security import hash_password
+from app.db.models.user import User, UserRole, UserStatus
+from app.services.equipment_service import get_company_today
 from app.worker.tasks import generate_maintenance_notifications
+
 
 @pytest.mark.asyncio
 async def test_full_acceptance_flows(async_client: AsyncClient, db_session: AsyncSession):

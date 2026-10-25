@@ -1,12 +1,15 @@
 from collections.abc import AsyncIterator
 from typing import Any, Optional
+
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
     async_sessionmaker,
     create_async_engine,
 )
+
 from app.config import settings
+
 
 class SessionManager:
     _instance: Optional["SessionManager"] = None
@@ -20,8 +23,8 @@ class SessionManager:
     def __init__(self) -> None:
         if self._initialized:
             return
-        self._engine: Optional[AsyncEngine] = None
-        self._session_maker: Optional[async_sessionmaker[AsyncSession]] = None
+        self._engine: AsyncEngine | None = None
+        self._session_maker: async_sessionmaker[AsyncSession] | None = None
         self._initialized = True
 
     def get_engine(self) -> AsyncEngine:
@@ -58,6 +61,7 @@ class SessionManager:
             await self._engine.dispose()
             self._engine = None
             self._session_maker = None
+
 
 async def get_session() -> AsyncIterator[AsyncSession]:
     session_maker = SessionManager().get_session_maker()

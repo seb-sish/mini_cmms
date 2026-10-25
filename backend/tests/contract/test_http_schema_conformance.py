@@ -1,7 +1,9 @@
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime, timezone
+
 import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.core.security import create_opaque_token, hash_password
 from app.db.models.equipment import Equipment, EquipmentStatus
 from app.db.models.session import UserSession
@@ -26,7 +28,7 @@ async def auth_headers(db_session: AsyncSession) -> dict[str, str]:
     session = UserSession(
         user_id=user.id,
         token_hash=token_hash,
-        expires_at=datetime(2099, 1, 1, tzinfo=timezone.utc),
+        expires_at=datetime(2099, 1, 1, tzinfo=UTC),
     )
     db_session.add(session)
     await db_session.commit()
@@ -96,7 +98,9 @@ async def test_user_create_rejects_extra_properties(async_client: AsyncClient, a
 
 @pytest.mark.contract
 @pytest.mark.asyncio
-async def test_user_patch_rejects_role_null(async_client: AsyncClient, auth_headers: dict[str, str], db_session: AsyncSession):
+async def test_user_patch_rejects_role_null(
+    async_client: AsyncClient, auth_headers: dict[str, str], db_session: AsyncSession
+):
     """PATCH /users/{id} with explicit role: null must return 422 (role is not nullable)."""
     user = User(
         login="target.patch",
@@ -128,7 +132,7 @@ async def test_user_patch_rejects_role_null(async_client: AsyncClient, auth_head
         ("*", 422, "VALIDATION_ERROR"),
         ('"33333333-3333-4333-8333-333333333333:01"', 422, "VALIDATION_ERROR"),  # leading zero
         ('"33333333-3333-4333-8333-333333333333:+1"', 422, "VALIDATION_ERROR"),  # signed
-        ('"33333333-3333-4333-8333-333333333333:0"', 422, "VALIDATION_ERROR"),   # zero version
+        ('"33333333-3333-4333-8333-333333333333:0"', 422, "VALIDATION_ERROR"),  # zero version
         ('"invalid-uuid:1"', 422, "VALIDATION_ERROR"),
         ('"11111111-1111-4111-8111-111111111111:1"', 412, "VERSION_CONFLICT"),  # wrong resource UUID
     ],
@@ -181,8 +185,12 @@ async def test_query_params_validation_and_filtering(
     assert res_offset_neg.json()["code"] == "VALIDATION_ERROR"
 
     # 2. users?q=... substring search
-    user_alpha = User(login="search_alpha", password_hash="h", role=UserRole.OPERATOR, status=UserStatus.ACTIVE, version=1)
-    user_beta = User(login="search_beta", password_hash="h", role=UserRole.OPERATOR, status=UserStatus.ACTIVE, version=1)
+    user_alpha = User(
+        login="search_alpha", password_hash="h", role=UserRole.OPERATOR, status=UserStatus.ACTIVE, version=1
+    )
+    user_beta = User(
+        login="search_beta", password_hash="h", role=UserRole.OPERATOR, status=UserStatus.ACTIVE, version=1
+    )
     db_session.add_all([user_alpha, user_beta])
     await db_session.commit()
 
@@ -207,7 +215,7 @@ async def test_query_params_validation_and_filtering(
     session_eng = UserSession(
         user_id=eng_user.id,
         token_hash=token_hash_eng,
-        expires_at=datetime(2099, 1, 1, tzinfo=timezone.utc),
+        expires_at=datetime(2099, 1, 1, tzinfo=UTC),
     )
     db_session.add(session_eng)
 
@@ -242,9 +250,7 @@ async def test_query_params_validation_and_filtering(
 
 @pytest.mark.contract
 @pytest.mark.asyncio
-async def test_work_order_whitespace_and_extra_fields(
-    async_client: AsyncClient, db_session: AsyncSession
-):
+async def test_work_order_whitespace_and_extra_fields(async_client: AsyncClient, db_session: AsyncSession):
     """Verifies that whitespace-only fields and injected status in WorkOrderCreate return 422."""
     author = User(
         login="author.engineer",
@@ -268,12 +274,12 @@ async def test_work_order_whitespace_and_extra_fields(
     session_eng = UserSession(
         user_id=author.id,
         token_hash=token_hash_eng,
-        expires_at=datetime(2099, 1, 1, tzinfo=timezone.utc),
+        expires_at=datetime(2099, 1, 1, tzinfo=UTC),
     )
     session_tech = UserSession(
         user_id=tech.id,
         token_hash=token_hash_tech,
-        expires_at=datetime(2099, 1, 1, tzinfo=timezone.utc),
+        expires_at=datetime(2099, 1, 1, tzinfo=UTC),
     )
     db_session.add_all([session_eng, session_tech])
 

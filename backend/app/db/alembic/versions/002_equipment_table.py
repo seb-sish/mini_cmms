@@ -5,15 +5,19 @@ Revises: 001_initial_users_and_sessions
 Create Date: 2026-10-24 22:17:00.000000
 
 """
-from typing import Sequence, Union
-from alembic import op
+
+from collections.abc import Sequence
+from typing import Union
+
 import sqlalchemy as sa
+from alembic import op
 from sqlalchemy.dialects.postgresql import UUID
 
 revision: str = "002_equipment_table"
-down_revision: Union[str, None] = "001_initial_users_and_sessions"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = "001_initial_users_and_sessions"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
+
 
 def upgrade() -> None:
     op.create_table(
@@ -35,6 +39,7 @@ def upgrade() -> None:
     op.create_index("ix_equipment_location", "equipment", ["location"])
     op.create_index("ix_equipment_status", "equipment", ["status"])
     op.create_index("ix_equipment_archived_at", "equipment", ["archived_at"])
+
 
 def downgrade() -> None:
     op.drop_table("equipment")

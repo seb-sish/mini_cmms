@@ -1,10 +1,13 @@
 from datetime import date, timedelta
+
 import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.db.models.user import User, UserRole, UserStatus
+
 from app.core.security import create_opaque_token, hash_password
 from app.db.models.session import UserSession
+from app.db.models.user import User, UserRole, UserStatus
+
 
 async def create_user_with_token(db: AsyncSession, login: str, role: UserRole) -> dict[str, str]:
     user = User(
@@ -27,6 +30,7 @@ async def create_user_with_token(db: AsyncSession, login: str, role: UserRole) -
     await db.commit()
     return {"Authorization": f"Bearer {raw_token}"}
 
+
 @pytest.mark.asyncio
 async def test_admin_blocked_from_equipment_and_faults(async_client: AsyncClient, db_session: AsyncSession):
     admin_headers = await create_user_with_token(db_session, "admin_forbidden", UserRole.ADMIN)
@@ -38,6 +42,7 @@ async def test_admin_blocked_from_equipment_and_faults(async_client: AsyncClient
     res_fault = await async_client.get("/api/v1/faults", headers=admin_headers)
     assert res_fault.status_code == 403
     assert res_fault.json()["code"] == "ACCESS_DENIED"
+
 
 @pytest.mark.asyncio
 async def test_fault_requires_severity_and_validates_future_date(async_client: AsyncClient, db_session: AsyncSession):

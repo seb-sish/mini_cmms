@@ -1,15 +1,17 @@
-from datetime import date, datetime, timezone
 import uuid
+from datetime import UTC, date, datetime, timezone
+
 import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models.user import User, UserRole, UserStatus
+from app.core.security import create_opaque_token, hash_password
 from app.db.models.equipment import Equipment
 from app.db.models.maintenance_plan import MaintenancePlan
 from app.db.models.maintenance_schedule import MaintenanceSchedule
-from app.core.security import hash_password, create_opaque_token
 from app.db.models.session import UserSession
+from app.db.models.user import User, UserRole, UserStatus
+
 
 @pytest.fixture
 async def technician_user(db_session: AsyncSession) -> User:
@@ -25,6 +27,7 @@ async def technician_user(db_session: AsyncSession) -> User:
     await db_session.refresh(tech)
     return tech
 
+
 @pytest.fixture
 async def engineer_user(db_session: AsyncSession) -> User:
     eng = User(
@@ -39,17 +42,19 @@ async def engineer_user(db_session: AsyncSession) -> User:
     await db_session.refresh(eng)
     return eng
 
+
 @pytest.fixture
 async def tech_token(db_session: AsyncSession, technician_user: User) -> str:
     raw_token, token_hash = create_opaque_token()
     session = UserSession(
         user_id=technician_user.id,
         token_hash=token_hash,
-        expires_at=datetime(2099, 1, 1, tzinfo=timezone.utc),
+        expires_at=datetime(2099, 1, 1, tzinfo=UTC),
     )
     db_session.add(session)
     await db_session.commit()
     return raw_token
+
 
 @pytest.fixture
 async def eng_token(db_session: AsyncSession, engineer_user: User) -> str:
@@ -57,11 +62,12 @@ async def eng_token(db_session: AsyncSession, engineer_user: User) -> str:
     session = UserSession(
         user_id=engineer_user.id,
         token_hash=token_hash,
-        expires_at=datetime(2099, 1, 1, tzinfo=timezone.utc),
+        expires_at=datetime(2099, 1, 1, tzinfo=UTC),
     )
     db_session.add(session)
     await db_session.commit()
     return raw_token
+
 
 @pytest.mark.asyncio
 async def test_notifications_recipient_isolation(
@@ -154,6 +160,7 @@ async def test_notifications_recipient_isolation(
     assert res_eng.status_code == 200
     assert res_eng.json()["id"] == str(notif_eng.id)
 
+
 @pytest.mark.asyncio
 async def test_notifications_rbac_admin_and_operator_forbidden(
     async_client: AsyncClient,
@@ -178,10 +185,12 @@ async def test_notifications_rbac_admin_and_operator_forbidden(
 
     raw_admin_token, token_hash_admin = create_opaque_token()
     raw_op_token, token_hash_op = create_opaque_token()
-    db_session.add_all([
-        UserSession(user_id=admin.id, token_hash=token_hash_admin, expires_at=datetime(2099, 1, 1, tzinfo=timezone.utc)),
-        UserSession(user_id=operator.id, token_hash=token_hash_op, expires_at=datetime(2099, 1, 1, tzinfo=timezone.utc)),
-    ])
+    db_session.add_all(
+        [
+            UserSession(user_id=admin.id, token_hash=token_hash_admin, expires_at=datetime(2099, 1, 1, tzinfo=UTC)),
+            UserSession(user_id=operator.id, token_hash=token_hash_op, expires_at=datetime(2099, 1, 1, tzinfo=UTC)),
+        ]
+    )
     await db_session.commit()
 
     res_admin = await async_client.get(

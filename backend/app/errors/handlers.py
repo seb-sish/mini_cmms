@@ -1,4 +1,3 @@
-from typing import Any
 from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -6,6 +5,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.errors.exceptions import AppException
 from app.schemas.common import ProblemDetail, ValidationErrorItem
+
 
 def register_error_handlers(app: FastAPI) -> None:
 
@@ -37,7 +37,9 @@ def register_error_handlers(app: FastAPI) -> None:
         errors = None
         if exc.errors:
             errors = [
-                ValidationErrorItem(field=e.get("field", e.get("name", "")), message=e.get("message", e.get("reason", "")))
+                ValidationErrorItem(
+                    field=e.get("field", e.get("name", "")), message=e.get("message", e.get("reason", ""))
+                )
                 for e in exc.errors
             ]
         problem = ProblemDetail(
@@ -116,7 +118,7 @@ def register_error_handlers(app: FastAPI) -> None:
         }
         code = code_map.get(exc.status_code, "HTTP_ERROR")
         title = exc.detail if isinstance(exc.detail, str) else code.replace("_", " ").title()
-        
+
         problem = ProblemDetail(
             type=f"https://mini-cmms.example/problems/{code.lower().replace('_', '-')}",
             title=title,

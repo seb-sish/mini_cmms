@@ -12,13 +12,10 @@ async def test_migrations_apply_to_empty_database(integration_engine: AsyncEngin
     """Verifies that Alembic migrations run cleanly and create required tables."""
     async with integration_engine.connect() as conn:
         result = await conn.execute(
-            text(
-                "SELECT table_name FROM information_schema.tables "
-                "WHERE table_schema = 'public'"
-            )
+            text("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'")
         )
         tables = {row[0] for row in result.fetchall()}
-    
+
     expected_tables = {
         "alembic_version",
         "users",
@@ -38,9 +35,7 @@ async def test_migrations_apply_to_empty_database(integration_engine: AsyncEngin
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_independent_sessions_observe_committed_state(
-    session_factory: async_sessionmaker[AsyncSession]
-):
+async def test_independent_sessions_observe_committed_state(session_factory: async_sessionmaker[AsyncSession]):
     """Verifies that separate DB sessions isolate uncommitted state and observe commits."""
     async with session_factory() as s1:
         # Insert a user in session 1
@@ -50,22 +45,18 @@ async def test_independent_sessions_observe_committed_state(
                 "VALUES ('00000000-0000-0000-0000-000000000001', 'isolation_test', 'hash', 'Test User', 'ADMIN', 'ACTIVE', 1)"
             )
         )
-        
+
         # In session 2, uncommitted row must not be visible yet
         async with session_factory() as s2:
-            res_before = await s2.execute(
-                text("SELECT login FROM users WHERE login = 'isolation_test'")
-            )
+            res_before = await s2.execute(text("SELECT login FROM users WHERE login = 'isolation_test'"))
             assert res_before.scalar_one_or_none() is None
-        
+
         # Commit session 1
         await s1.commit()
-    
+
     # In session 2, committed row must be visible now
     async with session_factory() as s2:
-        res_after = await s2.execute(
-            text("SELECT login FROM users WHERE login = 'isolation_test'")
-        )
+        res_after = await s2.execute(text("SELECT login FROM users WHERE login = 'isolation_test'"))
         assert res_after.scalar_one_or_none() == "isolation_test"
 
 
@@ -86,6 +77,6 @@ def test_unsafe_dsn_protection():
     """Verifies guard against accidental execution on non-test databases."""
     with pytest.raises(ValueError, match="Unsafe test DSN detected"):
         validate_test_dsn("postgresql+asyncpg://prod_user:secret@localhost:5432/mini_cmms")
-    
+
     with pytest.raises(ValueError, match="Unsafe test Redis URL detected"):
         validate_test_redis("redis://localhost:6379/0")

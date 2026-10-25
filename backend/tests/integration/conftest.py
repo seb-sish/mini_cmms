@@ -11,11 +11,9 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
-TEST_DB_DSN = os.getenv(
-    "TEST_DB_DSN",
-    "postgresql+asyncpg://test_user:test_password@127.0.0.1:5433/mini_cmms_test"
-)
+TEST_DB_DSN = os.getenv("TEST_DB_DSN", "postgresql+asyncpg://test_user:test_password@127.0.0.1:5433/mini_cmms_test")
 TEST_REDIS_URL = os.getenv("TEST_REDIS_URL", "redis://127.0.0.1:6380/0")
+
 
 def validate_test_dsn(dsn: str) -> None:
     # Ensure we never run tests against production or unexpected databases
@@ -25,6 +23,7 @@ def validate_test_dsn(dsn: str) -> None:
             "the dedicated test database on port 5433 ('mini_cmms_test')."
         )
 
+
 def validate_test_redis(url: str) -> None:
     if "6380" not in url:
         raise ValueError(
@@ -32,7 +31,9 @@ def validate_test_redis(url: str) -> None:
             "the dedicated test redis on port 6380."
         )
 
+
 _migrations_applied = False
+
 
 @pytest_asyncio.fixture(scope="session")
 async def apply_test_migrations() -> None:
@@ -54,6 +55,7 @@ async def apply_test_migrations() -> None:
                 "`docker compose -p mini_cmms_test -f compose.test.yml up -d --wait`"
             ) from exc
 
+
 @pytest_asyncio.fixture
 async def integration_engine(apply_test_migrations: None) -> AsyncIterator[AsyncEngine]:
     validate_test_dsn(TEST_DB_DSN)
@@ -61,16 +63,18 @@ async def integration_engine(apply_test_migrations: None) -> AsyncIterator[Async
     yield engine
     await engine.dispose()
 
+
 @pytest_asyncio.fixture
 async def session_factory(integration_engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:
     return async_sessionmaker(integration_engine, expire_on_commit=False)
+
 
 @pytest_asyncio.fixture(autouse=True)
 async def clean_test_db(integration_engine: AsyncEngine, request: pytest.FixtureRequest) -> AsyncIterator[None]:
     if request.node.name == "test_unsafe_dsn_protection":
         yield
         return
-        
+
     tables = [
         "notifications",
         "work_order_events",
@@ -86,6 +90,7 @@ async def clean_test_db(integration_engine: AsyncEngine, request: pytest.Fixture
     async with integration_engine.begin() as conn:
         await conn.execute(text(f"TRUNCATE TABLE {', '.join(tables)} RESTART IDENTITY CASCADE"))
     yield
+
 
 @pytest_asyncio.fixture
 async def real_redis() -> AsyncIterator[aioredis.Redis]:

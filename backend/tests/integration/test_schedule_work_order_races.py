@@ -1,26 +1,27 @@
 import asyncio
 import uuid
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta, timezone
+
 import pytest
-from httpx import AsyncClient, ASGITransport
+from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.__main__ import app
-from app.db.models.user import User, UserRole, UserStatus
+from app.core.security import create_opaque_token, hash_password
 from app.db.models.equipment import Equipment, EquipmentStatus
 from app.db.models.fault import Fault, FaultStatus
 from app.db.models.maintenance_plan import MaintenancePlan, PlanScope
 from app.db.models.maintenance_schedule import MaintenanceSchedule
-from app.db.models.work_order import WorkOrder, WorkOrderType, WorkOrderStatus, WorkOrderPriority
-from app.core.security import hash_password, create_opaque_token
 from app.db.models.session import UserSession
-from app.services.equipment_service import get_company_today
+from app.db.models.user import User, UserRole, UserStatus
+from app.db.models.work_order import WorkOrder, WorkOrderPriority, WorkOrderStatus, WorkOrderType
+from app.errors.exceptions import AppException
 from app.schemas.maintenance import MaintenancePlanUpdate
 from app.schemas.work_order import WorkOrderCreate
+from app.services.equipment_service import get_company_today
 from app.services.maintenance_service import MaintenanceService
 from app.services.work_order_service import WorkOrderService
-from app.errors.exceptions import AppException
 
 
 @pytest.fixture
@@ -39,7 +40,7 @@ async def race_engineer(session_factory: async_sessionmaker[AsyncSession]) -> tu
         sess = UserSession(
             user_id=user.id,
             token_hash=t_hash,
-            expires_at=datetime.now(timezone.utc) + timedelta(hours=12),
+            expires_at=datetime.now(UTC) + timedelta(hours=12),
         )
         session.add(sess)
         await session.commit()
@@ -63,7 +64,7 @@ async def race_technician(session_factory: async_sessionmaker[AsyncSession]) -> 
         sess = UserSession(
             user_id=user.id,
             token_hash=t_hash,
-            expires_at=datetime.now(timezone.utc) + timedelta(hours=12),
+            expires_at=datetime.now(UTC) + timedelta(hours=12),
         )
         session.add(sess)
         await session.commit()
@@ -171,9 +172,7 @@ async def test_race_interval_patch_vs_create_planned_order(
     async with session_factory() as s:
         refreshed_plan = await s.get(MaintenancePlan, plan_id)
         refreshed_sched = await s.get(MaintenanceSchedule, sched_id)
-        wos = (await s.execute(
-            select(WorkOrder).where(WorkOrder.schedule_id == sched_id)
-        )).scalars().all()
+        wos = (await s.execute(select(WorkOrder).where(WorkOrder.schedule_id == sched_id))).scalars().all()
 
     # Verify no invalid intermediate state
     patch_ok = isinstance(results[0], MaintenancePlan)
@@ -273,8 +272,8 @@ async def test_non_advancing_due_date_rejection_and_rollback(
             schedule_id=sched1_id,
             planned_due_on=date(2026, 10, 25),  # planned was 25th
             author_id=eng.id,
-            completed_at=datetime(2026, 10, 15, 12, 0, tzinfo=timezone.utc),
-            closed_at=datetime(2026, 10, 15, 14, 0, tzinfo=timezone.utc),
+            completed_at=datetime(2026, 10, 15, 12, 0, tzinfo=UTC),
+            closed_at=datetime(2026, 10, 15, 14, 0, tzinfo=UTC),
         )
         session.add(closed_wo)
         await session.commit()

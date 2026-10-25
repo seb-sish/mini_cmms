@@ -1,16 +1,14 @@
-from typing import Any, Optional
-
 class AppException(Exception):
     def __init__(
         self,
         status: int,
         code: str,
-        detail: Optional[str] = None,
-        title: Optional[str] = None,
-        type_uri: Optional[str] = None,
-        errors: Optional[list[dict[str, str]]] = None,
-        invalid_params: Optional[list[dict[str, str]]] = None,
-        headers: Optional[dict[str, str]] = None,
+        detail: str | None = None,
+        title: str | None = None,
+        type_uri: str | None = None,
+        errors: list[dict[str, str]] | None = None,
+        invalid_params: list[dict[str, str]] | None = None,
+        headers: dict[str, str] | None = None,
     ) -> None:
         actual_detail = detail or code.replace("_", " ").title()
         super().__init__(actual_detail)

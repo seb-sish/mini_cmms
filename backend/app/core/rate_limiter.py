@@ -1,10 +1,12 @@
 import asyncio
-from contextlib import asynccontextmanager
 import math
 import time
-from typing import AsyncIterator, Optional
 import uuid
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
 import redis.asyncio as aioredis
+
 from app.errors.exceptions import AppException
 
 RELEASE_LUA = """
@@ -72,7 +74,7 @@ async def check_rate_limit(
     key: str,
     max_attempts: int = 5,
     window_seconds: int = 600,
-) -> Optional[int]:
+) -> int | None:
     """
     Check if the key has exceeded the maximum allowed failed attempts within the sliding window.
     Returns Retry-After in seconds (int >= 1) if rate-limited, otherwise None.

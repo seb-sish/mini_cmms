@@ -1,11 +1,14 @@
+from datetime import UTC, date, datetime, timedelta, timezone
+
 import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.db.models.user import User, UserRole, UserStatus
+
 from app.core.security import create_opaque_token, hash_password
-from app.db.models.session import UserSession
 from app.db.models.equipment import Equipment, EquipmentStatus
-from datetime import date, datetime, timedelta, timezone
+from app.db.models.session import UserSession
+from app.db.models.user import User, UserRole, UserStatus
+
 
 @pytest.fixture
 async def operator_auth(db_session: AsyncSession) -> tuple[User, str]:
@@ -24,11 +27,12 @@ async def operator_auth(db_session: AsyncSession) -> tuple[User, str]:
     session = UserSession(
         user_id=user.id,
         token_hash=t_hash,
-        expires_at=datetime.now(timezone.utc) + timedelta(hours=12),
+        expires_at=datetime.now(UTC) + timedelta(hours=12),
     )
     db_session.add(session)
     await db_session.commit()
     return user, raw_token
+
 
 @pytest.fixture
 async def sample_equipment(db_session: AsyncSession) -> Equipment:
@@ -45,18 +49,23 @@ async def sample_equipment(db_session: AsyncSession) -> Equipment:
     await db_session.refresh(eq)
     return eq
 
+
 @pytest.mark.asyncio
 async def test_fault_create_and_operator_edit(async_client: AsyncClient, operator_auth, sample_equipment):
     user, token = operator_auth
     headers = {"Authorization": f"Bearer {token}"}
 
     # Create fault
-    res = await async_client.post("/api/v1/faults", headers=headers, json={
-        "equipment_id": str(sample_equipment.id),
-        "description": "Vibration in spindle motor",
-        "severity": "HIGH",
-        "detected_on": "2026-10-24"
-    })
+    res = await async_client.post(
+        "/api/v1/faults",
+        headers=headers,
+        json={
+            "equipment_id": str(sample_equipment.id),
+            "description": "Vibration in spindle motor",
+            "severity": "HIGH",
+            "detected_on": "2026-10-24",
+        },
+    )
     assert res.status_code == 201
     f_data = res.json()
     assert f_data["status"] == "OPEN"
@@ -69,7 +78,7 @@ async def test_fault_create_and_operator_edit(async_client: AsyncClient, operato
     patch_res = await async_client.patch(
         f"/api/v1/faults/{f_data['id']}",
         headers={**headers, "If-Match": etag},
-        json={"description": "High vibration in spindle motor bearing"}
+        json={"description": "High vibration in spindle motor bearing"},
     )
     assert patch_res.status_code == 200
     assert patch_res.json()["version"] == 2

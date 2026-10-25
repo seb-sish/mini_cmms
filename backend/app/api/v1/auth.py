@@ -1,16 +1,18 @@
 from typing import Annotated
-from fastapi import APIRouter, Depends, Header, Request, Response, status
-from sqlalchemy.ext.asyncio import AsyncSession
+
 import redis.asyncio as aioredis
+from fastapi import APIRouter, Depends, Request, Response, status
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import get_current_user, get_redis
 from app.db.models.user import User
 from app.db.session import get_session
-from app.schemas.auth import AuthResponse, LoginRequest, TokenResponse
+from app.schemas.auth import AuthResponse, LoginRequest
 from app.schemas.user import UserRead
 from app.services.auth_service import AuthService
 
 auth_router = APIRouter(prefix="/auth", tags=["Auth"])
+
 
 @auth_router.post("/login", response_model=AuthResponse)
 async def login(
@@ -29,6 +31,7 @@ async def login(
         user=UserRead.model_validate(user),
     )
 
+
 @auth_router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
 async def logout(
     request: Request,
@@ -41,6 +44,7 @@ async def logout(
         service = AuthService(db, redis_client)
         await service.logout(token_hash)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
 
 @auth_router.get("/me", response_model=UserRead)
 async def get_me(

@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from app.config import settings
 from app.worker.tasks import generate_maintenance_notifications
 
+
 async def startup(ctx: dict) -> None:
     engine = create_async_engine(
         str(settings.db.DSN),
@@ -15,10 +16,12 @@ async def startup(ctx: dict) -> None:
     ctx["engine"] = engine
     ctx["session_maker"] = session_maker
 
+
 async def shutdown(ctx: dict) -> None:
     engine = ctx.get("engine")
     if engine:
         await engine.dispose()
+
 
 class WorkerSettings:
     functions = [generate_maintenance_notifications]

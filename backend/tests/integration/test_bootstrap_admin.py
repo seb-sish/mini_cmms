@@ -1,5 +1,6 @@
 import asyncio
 import uuid
+
 import pytest
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker

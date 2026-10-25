@@ -1,7 +1,10 @@
-from datetime import date, datetime
 import uuid
+from datetime import date, datetime
+
 from pydantic import BaseModel, ConfigDict
+
 from app.db.models.notification import NotificationType
+
 
 class NotificationRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -15,6 +18,7 @@ class NotificationRead(BaseModel):
     type: NotificationType
     message: str
     created_at: datetime
+
 
 class NotificationPage(BaseModel):
     items: list[NotificationRead]

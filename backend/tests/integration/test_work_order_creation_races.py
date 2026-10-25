@@ -1,6 +1,7 @@
 import asyncio
-from datetime import date, datetime, timedelta, timezone
 import uuid
+from datetime import date, datetime, timedelta, timezone
+
 import pytest
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -20,9 +21,7 @@ from app.services.work_order_service import WorkOrderService
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_concurrent_repair_work_orders_same_fault_race(
-    session_factory: async_sessionmaker[AsyncSession]
-):
+async def test_concurrent_repair_work_orders_same_fault_race(session_factory: async_sessionmaker[AsyncSession]):
     eq_id = uuid.uuid4()
     fault_id = uuid.uuid4()
     eng_id = uuid.uuid4()
@@ -105,7 +104,11 @@ async def test_concurrent_repair_work_orders_same_fault_race(
     results = await asyncio.gather(create_first(), create_second(), return_exceptions=True)
 
     successes = [r for r in results if isinstance(r, WorkOrder)]
-    conflicts = [r for r in results if isinstance(r, AppException) and r.status == 409 and r.code == "DUPLICATE_ACTIVE_WORK_ORDER"]
+    conflicts = [
+        r
+        for r in results
+        if isinstance(r, AppException) and r.status == 409 and r.code == "DUPLICATE_ACTIVE_WORK_ORDER"
+    ]
 
     assert len(successes) == 1, f"Expected exactly 1 work order to succeed, got {len(successes)}: {results}"
     assert len(conflicts) == 1, f"Expected exactly 1 409 DUPLICATE_ACTIVE_WORK_ORDER, got {len(conflicts)}: {results}"
@@ -121,9 +124,7 @@ async def test_concurrent_repair_work_orders_same_fault_race(
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_concurrent_planned_work_orders_same_schedule_race(
-    session_factory: async_sessionmaker[AsyncSession]
-):
+async def test_concurrent_planned_work_orders_same_schedule_race(session_factory: async_sessionmaker[AsyncSession]):
     eq_id = uuid.uuid4()
     plan_id = uuid.uuid4()
     sched_id = uuid.uuid4()
@@ -215,7 +216,11 @@ async def test_concurrent_planned_work_orders_same_schedule_race(
     results = await asyncio.gather(create_first(), create_second(), return_exceptions=True)
 
     successes = [r for r in results if isinstance(r, WorkOrder)]
-    conflicts = [r for r in results if isinstance(r, AppException) and r.status == 409 and r.code == "DUPLICATE_PLANNED_WORK_ORDER"]
+    conflicts = [
+        r
+        for r in results
+        if isinstance(r, AppException) and r.status == 409 and r.code == "DUPLICATE_PLANNED_WORK_ORDER"
+    ]
 
     assert len(successes) == 1, f"Expected exactly 1 success, got {len(successes)}: {results}"
     assert len(conflicts) == 1, f"Expected exactly 1 conflict, got {len(conflicts)}: {results}"
@@ -224,7 +229,7 @@ async def test_concurrent_planned_work_orders_same_schedule_race(
 @pytest.mark.integration
 @pytest.mark.asyncio
 async def test_completed_work_order_blocks_creation_until_closed_or_cancelled(
-    session_factory: async_sessionmaker[AsyncSession]
+    session_factory: async_sessionmaker[AsyncSession],
 ):
     eq_id = uuid.uuid4()
     fault_id = uuid.uuid4()
@@ -312,9 +317,7 @@ async def test_completed_work_order_blocks_creation_until_closed_or_cancelled(
     # 3. Complete work order -> fault remains IN_PROGRESS (version 2)
     async with session_factory() as s:
         tech = (await s.execute(select(User).where(User.id == tech_id))).scalar_one()
-        await WorkOrderService.complete_work_order(
-            s, tech, wo_id, result="Hose replaced", replaced_parts=["HOSE-01"]
-        )
+        await WorkOrderService.complete_work_order(s, tech, wo_id, result="Hose replaced", replaced_parts=["HOSE-01"])
 
     async with session_factory() as s:
         f = (await s.execute(select(Fault).where(Fault.id == fault_id))).scalar_one()
@@ -373,7 +376,7 @@ async def test_completed_work_order_blocks_creation_until_closed_or_cancelled(
 @pytest.mark.integration
 @pytest.mark.asyncio
 async def test_cancelled_work_order_leaves_fault_open_and_allows_recreate(
-    session_factory: async_sessionmaker[AsyncSession]
+    session_factory: async_sessionmaker[AsyncSession],
 ):
     eq_id = uuid.uuid4()
     fault_id = uuid.uuid4()
@@ -460,9 +463,7 @@ async def test_cancelled_work_order_leaves_fault_open_and_allows_recreate(
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_database_partial_unique_index_enforcement(
-    session_factory: async_sessionmaker[AsyncSession]
-):
+async def test_database_partial_unique_index_enforcement(session_factory: async_sessionmaker[AsyncSession]):
     eq_id = uuid.uuid4()
     fault_id = uuid.uuid4()
     eng_id = uuid.uuid4()

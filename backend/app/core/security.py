@@ -1,13 +1,16 @@
 import hashlib
 import secrets
+
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
 
 _ph = PasswordHasher()
 
+
 def hash_password(password: str) -> str:
     """Hash a plaintext password using Argon2."""
     return _ph.hash(password)
+
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Verify a password against an Argon2 hash."""
@@ -16,9 +19,11 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     except (VerifyMismatchError, Exception):
         return False
 
+
 def hash_token(token: str) -> str:
     """Generate SHA-256 hex digest of an opaque token for DB storage."""
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
 
 def create_opaque_token() -> tuple[str, str]:
     """

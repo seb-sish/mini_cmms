@@ -1,19 +1,19 @@
 import asyncio
 import uuid
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta, timezone
+
 import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.core.security import hash_password, create_opaque_token
+from app.core.security import create_opaque_token, hash_password
 from app.db.models.equipment import Equipment, EquipmentStatus
 from app.db.models.maintenance_plan import MaintenancePlan, PlanScope
 from app.db.models.maintenance_schedule import MaintenanceSchedule
 from app.db.models.session import UserSession
 from app.db.models.user import User, UserRole, UserStatus
-from app.db.models.work_order import WorkOrder, WorkOrderPriority, WorkOrderStatus, WorkOrderType
-from app.db.models.work_order import WorkChecklistItem
+from app.db.models.work_order import WorkChecklistItem, WorkOrder, WorkOrderPriority, WorkOrderStatus, WorkOrderType
 from app.db.models.work_order_event import WorkOrderEvent, WorkOrderEventType
 from app.services.equipment_service import get_company_today
 
@@ -35,7 +35,7 @@ async def patch_engineer(db_session: AsyncSession) -> tuple[User, str]:
     sess = UserSession(
         user_id=user.id,
         token_hash=t_hash,
-        expires_at=datetime.now(timezone.utc) + timedelta(hours=12),
+        expires_at=datetime.now(UTC) + timedelta(hours=12),
     )
     db_session.add(sess)
     await db_session.commit()
@@ -59,7 +59,7 @@ async def patch_technician(db_session: AsyncSession) -> tuple[User, str]:
     sess = UserSession(
         user_id=user.id,
         token_hash=t_hash,
-        expires_at=datetime.now(timezone.utc) + timedelta(hours=12),
+        expires_at=datetime.now(UTC) + timedelta(hours=12),
     )
     db_session.add(sess)
     await db_session.commit()
@@ -121,9 +121,11 @@ async def test_patch_work_order_noop_and_real_change(
     assert noop_data.get("updated_at") == updated_at_1, "No-op patch must not change updated_at"
 
     # Verify no UPDATED event was created
-    events = (await db_session.execute(
-        select(WorkOrderEvent).where(WorkOrderEvent.work_order_id == uuid.UUID(wo_id))
-    )).scalars().all()
+    events = (
+        (await db_session.execute(select(WorkOrderEvent).where(WorkOrderEvent.work_order_id == uuid.UUID(wo_id))))
+        .scalars()
+        .all()
+    )
     assert not any(e.event_type == WorkOrderEventType.UPDATED for e in events)
 
     # 2. Real change PATCH: title is changed
@@ -140,12 +142,18 @@ async def test_patch_work_order_noop_and_real_change(
 
     # Verify UPDATED event was created
     db_session.expire_all()
-    events_after = (await db_session.execute(
-        select(WorkOrderEvent).where(
-            WorkOrderEvent.work_order_id == uuid.UUID(wo_id),
-            WorkOrderEvent.event_type == WorkOrderEventType.UPDATED,
+    events_after = (
+        (
+            await db_session.execute(
+                select(WorkOrderEvent).where(
+                    WorkOrderEvent.work_order_id == uuid.UUID(wo_id),
+                    WorkOrderEvent.event_type == WorkOrderEventType.UPDATED,
+                )
+            )
         )
-    )).scalars().all()
+        .scalars()
+        .all()
+    )
     assert len(events_after) == 1
 
 

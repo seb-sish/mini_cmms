@@ -1,6 +1,8 @@
-import pytest
 import fakeredis.aioredis
-from app.core.rate_limiter import record_failed_attempt, check_rate_limit
+import pytest
+
+from app.core.rate_limiter import check_rate_limit, record_failed_attempt
+
 
 @pytest.mark.asyncio
 async def test_rate_limiter_blocks_on_sixth_attempt():

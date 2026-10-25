@@ -1,5 +1,6 @@
 import asyncio
 import time
+
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -100,7 +101,7 @@ async def test_case_insensitive_login_rate_limiting(
         async with session_factory() as s:
             srv = AuthService(s, real_redis)
             with pytest.raises(AppException) as exc:
-                await srv.login(login_variant, "WrongPassword!", f"10.0.0.{i+1}")
+                await srv.login(login_variant, "WrongPassword!", f"10.0.0.{i + 1}")
             assert exc.value.status == 401
 
     # 6th attempt with yet another IP and casing must receive 429 RATE_LIMITED due to normalized login

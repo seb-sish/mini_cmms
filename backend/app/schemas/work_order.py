@@ -1,18 +1,20 @@
-from datetime import date, datetime, timezone
-from typing import Any, Optional
 import uuid
+from datetime import UTC, date, datetime
+from typing import Any
+
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator, model_validator
+
 from app.db.models.work_order import WorkOrderPriority, WorkOrderStatus, WorkOrderType
 from app.db.models.work_order_event import WorkOrderEventType
 
 
-def _serialize_dt(dt: Optional[datetime]) -> Optional[str]:
+def _serialize_dt(dt: datetime | None) -> str | None:
     if dt is None:
         return None
     if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
+        dt = dt.replace(tzinfo=UTC)
     else:
-        dt = dt.astimezone(timezone.utc)
+        dt = dt.astimezone(UTC)
     return dt.isoformat().replace("+00:00", "Z")
 
 
@@ -24,8 +26,8 @@ class WorkChecklistItemRead(BaseModel):
     required: bool
     order: int
     checked: bool
-    comment: Optional[str] = None
-    checked_at: Optional[datetime] = None
+    comment: str | None = None
+    checked_at: datetime | None = None
 
     @model_validator(mode="before")
     @classmethod
@@ -48,7 +50,7 @@ class WorkChecklistItemRead(BaseModel):
         return data
 
     @field_serializer("checked_at")
-    def serialize_checked_at(self, dt: Optional[datetime], _info) -> Optional[str]:
+    def serialize_checked_at(self, dt: datetime | None, _info) -> str | None:
         return _serialize_dt(dt)
 
 
@@ -56,7 +58,7 @@ class ChecklistItemUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     checked: bool
-    comment: Optional[str] = Field(default=None, max_length=1000)
+    comment: str | None = Field(default=None, max_length=1000)
 
 
 class WorkOrderCreate(BaseModel):
@@ -64,8 +66,8 @@ class WorkOrderCreate(BaseModel):
 
     type: WorkOrderType
     equipment_id: uuid.UUID
-    fault_id: Optional[uuid.UUID] = None
-    schedule_id: Optional[uuid.UUID] = None
+    fault_id: uuid.UUID | None = None
+    schedule_id: uuid.UUID | None = None
     title: str = Field(min_length=3, max_length=200, pattern=r"\S")
     description: str = Field(min_length=5, max_length=2000, pattern=r"\S")
     priority: WorkOrderPriority
@@ -86,9 +88,9 @@ class WorkOrderCreate(BaseModel):
 class WorkOrderPatch(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    title: Optional[str] = Field(default=None, min_length=3, max_length=200, pattern=r"\S")
-    description: Optional[str] = Field(default=None, min_length=5, max_length=2000, pattern=r"\S")
-    priority: Optional[WorkOrderPriority] = None
+    title: str | None = Field(default=None, min_length=3, max_length=200, pattern=r"\S")
+    description: str | None = Field(default=None, min_length=5, max_length=2000, pattern=r"\S")
+    priority: WorkOrderPriority | None = None
 
     @field_validator("title", "description", "priority", mode="before")
     @classmethod
@@ -140,26 +142,26 @@ class WorkOrderRead(BaseModel):
     number: str
     type: WorkOrderType
     equipment_id: uuid.UUID
-    fault_id: Optional[uuid.UUID] = None
-    schedule_id: Optional[uuid.UUID] = None
-    planned_due_on: Optional[date] = None
+    fault_id: uuid.UUID | None = None
+    schedule_id: uuid.UUID | None = None
+    planned_due_on: date | None = None
     title: str
     description: str
     priority: WorkOrderPriority
     status: WorkOrderStatus
     author_id: uuid.UUID
-    assignee_id: Optional[uuid.UUID] = None
+    assignee_id: uuid.UUID | None = None
     checklist: list[WorkChecklistItemRead] = Field(default_factory=list)
-    result: Optional[str] = None
+    result: str | None = None
     replaced_parts: list[str] = Field(default_factory=list)
-    completed_at: Optional[datetime] = None
+    completed_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
-    closed_at: Optional[datetime] = None
+    closed_at: datetime | None = None
     version: int
-    cancelled_at: Optional[datetime] = None
-    cancelled_by: Optional[uuid.UUID] = None
-    cancellation_reason: Optional[str] = None
+    cancelled_at: datetime | None = None
+    cancelled_by: uuid.UUID | None = None
+    cancellation_reason: str | None = None
 
     @field_serializer("created_at", "updated_at")
     def serialize_req_datetime(self, dt: datetime, _info) -> str:
@@ -168,7 +170,7 @@ class WorkOrderRead(BaseModel):
         return res
 
     @field_serializer("completed_at", "closed_at", "cancelled_at")
-    def serialize_opt_datetime(self, dt: Optional[datetime], _info) -> Optional[str]:
+    def serialize_opt_datetime(self, dt: datetime | None, _info) -> str | None:
         return _serialize_dt(dt)
 
 
@@ -187,11 +189,11 @@ class WorkOrderEventRead(BaseModel):
     event_type: WorkOrderEventType
     actor_id: uuid.UUID
     occurred_at: datetime
-    from_status: Optional[WorkOrderStatus] = None
-    to_status: Optional[WorkOrderStatus] = None
-    old_assignee_id: Optional[uuid.UUID] = None
-    new_assignee_id: Optional[uuid.UUID] = None
-    details: Optional[str] = None
+    from_status: WorkOrderStatus | None = None
+    to_status: WorkOrderStatus | None = None
+    old_assignee_id: uuid.UUID | None = None
+    new_assignee_id: uuid.UUID | None = None
+    details: str | None = None
 
     @field_serializer("occurred_at")
     def serialize_occurred_at(self, dt: datetime, _info) -> str:
@@ -213,8 +215,8 @@ class WorkHistoryRead(BaseModel):
     id: uuid.UUID
     work_order_id: uuid.UUID
     equipment_id: uuid.UUID
-    plan_id: Optional[uuid.UUID] = None
-    fault_id: Optional[uuid.UUID] = None
+    plan_id: uuid.UUID | None = None
+    fault_id: uuid.UUID | None = None
     technician_id: uuid.UUID
     completed_at: datetime
     closed_at: datetime

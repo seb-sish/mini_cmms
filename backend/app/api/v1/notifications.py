@@ -1,5 +1,5 @@
-from typing import Optional
 import uuid
+
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -12,13 +12,14 @@ from app.services.notification_service import NotificationService
 
 notifications_router = APIRouter(prefix="/notifications", tags=["Notifications"])
 
+
 @notifications_router.get(
     "",
     response_model=NotificationPage,
     status_code=status.HTTP_200_OK,
 )
 async def list_notifications(
-    type: Optional[NotificationType] = Query(None),
+    type: NotificationType | None = Query(None),
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
     session: AsyncSession = Depends(get_session),
@@ -37,6 +38,7 @@ async def list_notifications(
         limit=limit,
         offset=offset,
     )
+
 
 @notifications_router.get(
     "/{notification_id}",

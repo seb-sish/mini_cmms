@@ -1,6 +1,7 @@
 import asyncio
-from datetime import date, datetime, timedelta, timezone
 import uuid
+from datetime import date, datetime, timedelta, timezone
+
 import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -33,7 +34,8 @@ async def test_user_concurrent_patch_version_race(session_factory: async_session
     async with session_factory() as session:
         user = User(
             id=user_id,
-            login="race_user", full_name="race_user",
+            login="race_user",
+            full_name="race_user",
             password_hash=hash_password("Password123!"),
             role=UserRole.TECHNICIAN,
             status=UserStatus.ACTIVE,
@@ -41,7 +43,8 @@ async def test_user_concurrent_patch_version_race(session_factory: async_session
         )
         admin = User(
             id=uuid.uuid4(),
-            login="admin_race", full_name="admin_race",
+            login="admin_race",
+            full_name="admin_race",
             password_hash=hash_password("Password123!"),
             role=UserRole.ADMIN,
             status=UserStatus.ACTIVE,
@@ -101,7 +104,8 @@ async def test_equipment_concurrent_patch_version_race(session_factory: async_se
     async with session_factory() as s:
         admin = User(
             id=admin_id,
-            login="eng_eq_race", full_name="eng_eq_race",
+            login="eng_eq_race",
+            full_name="eng_eq_race",
             password_hash=hash_password("Password123!"),
             role=UserRole.ENGINEER,
             status=UserStatus.ACTIVE,
@@ -172,7 +176,8 @@ async def test_fault_concurrent_patch_version_race(session_factory: async_sessio
     async with session_factory() as s:
         op = User(
             id=op_id,
-            login="operator_fault_race", full_name="operator_fault_race",
+            login="operator_fault_race",
+            full_name="operator_fault_race",
             password_hash=hash_password("Password123!"),
             role=UserRole.OPERATOR,
             status=UserStatus.ACTIVE,
@@ -320,7 +325,8 @@ async def test_work_order_concurrent_patch_version_race(session_factory: async_s
     async with session_factory() as s:
         eng = User(
             id=eng_id,
-            login="eng_wo_race", full_name="eng_wo_race",
+            login="eng_wo_race",
+            full_name="eng_wo_race",
             password_hash=hash_password("Password123!"),
             role=UserRole.ENGINEER,
             status=UserStatus.ACTIVE,
@@ -400,7 +406,8 @@ async def test_no_op_patch_does_not_increment_version(session_factory: async_ses
     async with session_factory() as s:
         user = User(
             id=user_id,
-            login="noop_user", full_name="noop_user",
+            login="noop_user",
+            full_name="noop_user",
             password_hash=hash_password("Password123!"),
             role=UserRole.TECHNICIAN,
             status=UserStatus.ACTIVE,
@@ -424,7 +431,7 @@ async def test_no_op_patch_does_not_increment_version(session_factory: async_ses
 @pytest.mark.integration
 @pytest.mark.asyncio
 async def test_automatic_fault_status_transition_increments_fault_version(
-    session_factory: async_sessionmaker[AsyncSession]
+    session_factory: async_sessionmaker[AsyncSession],
 ):
     eq_id = uuid.uuid4()
     eng_id = uuid.uuid4()
@@ -435,7 +442,8 @@ async def test_automatic_fault_status_transition_increments_fault_version(
     async with session_factory() as s:
         eng = User(
             id=eng_id,
-            login="eng_f_trans", full_name="eng_f_trans",
+            login="eng_f_trans",
+            full_name="eng_f_trans",
             password_hash=hash_password("Password123!"),
             role=UserRole.ENGINEER,
             status=UserStatus.ACTIVE,
@@ -443,7 +451,8 @@ async def test_automatic_fault_status_transition_increments_fault_version(
         )
         tech = User(
             id=tech_id,
-            login="tech_f_trans", full_name="tech_f_trans",
+            login="tech_f_trans",
+            full_name="tech_f_trans",
             password_hash=hash_password("Password123!"),
             role=UserRole.TECHNICIAN,
             status=UserStatus.ACTIVE,
@@ -476,6 +485,7 @@ async def test_automatic_fault_status_transition_increments_fault_version(
     async with session_factory() as s:
         eng = (await s.execute(select(User).where(User.id == eng_id))).scalar_one()
         from app.schemas.work_order import WorkOrderCreate
+
         wo = await WorkOrderService.create_work_order(
             s,
             current_user=eng,
@@ -548,7 +558,8 @@ async def test_concurrent_checklist_patch_version_race(session_factory: async_se
     async with session_factory() as s:
         eng = User(
             id=eng_id,
-            login="eng_chk_race", full_name="eng_chk_race",
+            login="eng_chk_race",
+            full_name="eng_chk_race",
             password_hash=hash_password("Password123!"),
             role=UserRole.ENGINEER,
             status=UserStatus.ACTIVE,
@@ -556,7 +567,8 @@ async def test_concurrent_checklist_patch_version_race(session_factory: async_se
         )
         tech = User(
             id=tech_id,
-            login="tech_chk_race", full_name="tech_chk_race",
+            login="tech_chk_race",
+            full_name="tech_chk_race",
             password_hash=hash_password("Password123!"),
             role=UserRole.TECHNICIAN,
             status=UserStatus.ACTIVE,
@@ -631,7 +643,7 @@ async def test_concurrent_checklist_patch_version_race(session_factory: async_se
                 item_id=item_id,
                 checked=True,
                 comment="Comment from A",
-                if_match=f"\"{wo_id}:1\"",
+                if_match=f'"{wo_id}:1"',
             )
 
     async def writer_b():
@@ -646,7 +658,7 @@ async def test_concurrent_checklist_patch_version_race(session_factory: async_se
                 item_id=item_id,
                 checked=True,
                 comment="Comment from B",
-                if_match=f"\"{wo_id}:1\"",
+                if_match=f'"{wo_id}:1"',
             )
 
     results = await asyncio.gather(writer_a(), writer_b(), return_exceptions=True)

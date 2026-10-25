@@ -1,5 +1,7 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+
 from pydantic import BaseModel, ConfigDict, Field, field_serializer
+
 from app.schemas.user import UserRead
 
 
@@ -21,9 +23,9 @@ class TokenResponse(BaseModel):
     @field_serializer("expires_at")
     def serialize_expires_at(self, dt: datetime, _info) -> str:
         if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
+            dt = dt.replace(tzinfo=UTC)
         else:
-            dt = dt.astimezone(timezone.utc)
+            dt = dt.astimezone(UTC)
         return dt.isoformat().replace("+00:00", "Z")
 
 

@@ -1,12 +1,13 @@
-from collections.abc import AsyncIterator
-from datetime import datetime, timezone
 import re
-from typing import Annotated, Callable, Optional
-from fastapi import Depends, Header, HTTPException, Request, status
+from collections.abc import AsyncIterator, Callable
+from datetime import UTC, datetime
+from typing import Annotated
+
+import redis.asyncio as aioredis
+from fastapi import Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-import redis.asyncio as aioredis
 
 from app.config import settings
 from app.core.security import hash_token
@@ -17,7 +18,8 @@ from app.errors.exceptions import AppException
 
 security = HTTPBearer(auto_error=False)
 
-_redis_pool: Optional[aioredis.ConnectionPool] = None
+_redis_pool: aioredis.ConnectionPool | None = None
+
 
 def get_redis_pool() -> aioredis.ConnectionPool:
     global _redis_pool
@@ -25,11 +27,13 @@ def get_redis_pool() -> aioredis.ConnectionPool:
         _redis_pool = aioredis.ConnectionPool.from_url(str(settings.redis.URL))
     return _redis_pool
 
+
 async def close_redis_pool() -> None:
     global _redis_pool
     if _redis_pool is not None:
         await _redis_pool.disconnect()
         _redis_pool = None
+
 
 async def get_redis() -> AsyncIterator[aioredis.Redis]:
     pool = get_redis_pool()
@@ -39,9 +43,10 @@ async def get_redis() -> AsyncIterator[aioredis.Redis]:
     finally:
         await client.aclose()
 
+
 async def get_current_user(
     request: Request,
-    credentials: Annotated[Optional[HTTPAuthorizationCredentials], Depends(security)],
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(security)],
     db: Annotated[AsyncSession, Depends(get_session)],
 ) -> User:
     if not credentials:
@@ -55,7 +60,7 @@ async def get_current_user(
 
     token = credentials.credentials
     t_hash = hash_token(token)
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     stmt = (
         select(User, UserSession)
@@ -92,6 +97,7 @@ async def get_current_user(
     request.state.current_user = user
     return user
 
+
 def require_role(*roles: str) -> Callable[[User], User]:
     def role_checker(user: Annotated[User, Depends(get_current_user)]) -> User:
         if user.role not in roles:
@@ -102,13 +108,16 @@ def require_role(*roles: str) -> Callable[[User], User]:
                 detail=f"Operation not permitted for role '{user.role}'.",
             )
         return user
+
     return role_checker
+
 
 IF_MATCH_REGEX = re.compile(
     r'^"([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}):([1-9][0-9]*)"$'
 )
 
-def parse_if_match_version(if_match: Optional[str], expected_id: str) -> int:
+
+def parse_if_match_version(if_match: str | None, expected_id: str) -> int:
     if not if_match:
         raise AppException(
             status=428,

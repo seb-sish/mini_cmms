@@ -1,13 +1,15 @@
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime, timezone
+
 import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models.user import User, UserRole, UserStatus
+from app.core.security import create_opaque_token, hash_password
 from app.db.models.equipment import Equipment
-from app.db.models.work_order import WorkOrder, WorkOrderType, WorkOrderStatus, WorkOrderPriority
-from app.core.security import hash_password, create_opaque_token
 from app.db.models.session import UserSession
+from app.db.models.user import User, UserRole, UserStatus
+from app.db.models.work_order import WorkOrder, WorkOrderPriority, WorkOrderStatus, WorkOrderType
+
 
 @pytest.fixture
 async def engineer_token(db_session: AsyncSession) -> str:
@@ -24,11 +26,12 @@ async def engineer_token(db_session: AsyncSession) -> str:
     session = UserSession(
         user_id=user.id,
         token_hash=token_hash,
-        expires_at=datetime(2099, 1, 1, tzinfo=timezone.utc),
+        expires_at=datetime(2099, 1, 1, tzinfo=UTC),
     )
     db_session.add(session)
     await db_session.commit()
     return raw_token
+
 
 @pytest.fixture
 async def technician_token(db_session: AsyncSession) -> tuple[str, User]:
@@ -45,11 +48,12 @@ async def technician_token(db_session: AsyncSession) -> tuple[str, User]:
     session = UserSession(
         user_id=user.id,
         token_hash=token_hash,
-        expires_at=datetime(2099, 1, 1, tzinfo=timezone.utc),
+        expires_at=datetime(2099, 1, 1, tzinfo=UTC),
     )
     db_session.add(session)
     await db_session.commit()
     return raw_token, user
+
 
 @pytest.fixture
 async def seed_orders(db_session: AsyncSession, technician_token: tuple[str, User]) -> list[WorkOrder]:
@@ -107,6 +111,7 @@ async def seed_orders(db_session: AsyncSession, technician_token: tuple[str, Use
     await db_session.commit()
     return [wo1, wo2, wo3]
 
+
 @pytest.mark.asyncio
 async def test_work_order_search_q(
     async_client: AsyncClient,
@@ -143,6 +148,7 @@ async def test_work_order_search_q(
     assert len(items3) == 1
     assert items3[0]["number"] == "WO-2026-0012"
 
+
 @pytest.mark.asyncio
 async def test_work_order_sort_status(
     async_client: AsyncClient,
@@ -155,7 +161,11 @@ async def test_work_order_sort_status(
         headers={"Authorization": f"Bearer {engineer_token}"},
     )
     assert res_asc.status_code == 200
-    statuses_asc = [item["status"] for item in res_asc.json()["items"] if item["number"] in ["WO-2026-0010", "WO-2026-0011", "WO-2026-0012"]]
+    statuses_asc = [
+        item["status"]
+        for item in res_asc.json()["items"]
+        if item["number"] in ["WO-2026-0010", "WO-2026-0011", "WO-2026-0012"]
+    ]
     assert statuses_asc == ["CREATED", "ASSIGNED", "IN_PROGRESS"]
 
     # Sort status DESC: IN_PROGRESS, ASSIGNED, CREATED
@@ -164,8 +174,13 @@ async def test_work_order_sort_status(
         headers={"Authorization": f"Bearer {engineer_token}"},
     )
     assert res_desc.status_code == 200
-    statuses_desc = [item["status"] for item in res_desc.json()["items"] if item["number"] in ["WO-2026-0010", "WO-2026-0011", "WO-2026-0012"]]
+    statuses_desc = [
+        item["status"]
+        for item in res_desc.json()["items"]
+        if item["number"] in ["WO-2026-0010", "WO-2026-0011", "WO-2026-0012"]
+    ]
     assert statuses_desc == ["IN_PROGRESS", "ASSIGNED", "CREATED"]
+
 
 @pytest.mark.asyncio
 async def test_technician_sees_only_assigned_work_orders(

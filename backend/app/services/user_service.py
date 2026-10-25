@@ -1,6 +1,6 @@
-from typing import Optional
 import uuid
-from sqlalchemy import text, func, select
+
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import hash_password
@@ -11,15 +11,15 @@ from app.services.auth_service import AuthService
 
 
 class UserService:
-    def __init__(self, session: AsyncSession, auth_service: Optional[AuthService] = None) -> None:
+    def __init__(self, session: AsyncSession, auth_service: AuthService | None = None) -> None:
         self.session = session
         self.auth_service = auth_service
 
     async def list_users(
         self,
-        role: Optional[UserRole] = None,
-        status: Optional[UserStatus] = None,
-        q: Optional[str] = None,
+        role: UserRole | None = None,
+        status: UserStatus | None = None,
+        q: str | None = None,
         limit: int = 20,
         offset: int = 0,
     ) -> tuple[list[User], int]:
@@ -114,6 +114,7 @@ class UserService:
         if payload.role is not None and payload.role != user.role:
             if user.role == UserRole.TECHNICIAN and payload.role != UserRole.TECHNICIAN:
                 from app.db.models.work_order import WorkOrder, WorkOrderStatus
+
                 active_statuses = [WorkOrderStatus.ASSIGNED, WorkOrderStatus.IN_PROGRESS, WorkOrderStatus.COMPLETED]
                 stmt = select(func.count(WorkOrder.id)).where(
                     WorkOrder.assignee_id == user.id,
@@ -148,7 +149,11 @@ class UserService:
 
         # 2. Status update & check last active admin
         if payload.status is not None and payload.status != user.status:
-            if user.role == UserRole.ADMIN and user.status == UserStatus.ACTIVE and payload.status == UserStatus.BLOCKED:
+            if (
+                user.role == UserRole.ADMIN
+                and user.status == UserStatus.ACTIVE
+                and payload.status == UserStatus.BLOCKED
+            ):
                 count_stmt = select(func.count(User.id)).where(
                     User.role == UserRole.ADMIN,
                     User.status == UserStatus.ACTIVE,

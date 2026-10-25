@@ -1,5 +1,5 @@
-from fastapi import APIRouter, status
 import redis.asyncio as aioredis
+from fastapi import APIRouter, status
 from sqlalchemy import text
 
 from app.api.dependencies import get_redis_pool
@@ -8,6 +8,7 @@ from app.errors.exceptions import AppException
 from app.schemas.common import HealthResponse
 
 system_router = APIRouter(tags=["System"])
+
 
 @system_router.get(
     "/health",
@@ -18,6 +19,7 @@ system_router = APIRouter(tags=["System"])
 async def health_check() -> HealthResponse:
     """Liveness probe: returns 200 ok if HTTP service is running."""
     return HealthResponse(status="ok", service="mini-cmms-api", version="1.0.0")
+
 
 @system_router.get(
     "/ready",

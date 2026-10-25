@@ -1,4 +1,5 @@
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta, timezone
+
 import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,9 +10,8 @@ from app.db.models.session import UserSession
 from app.db.models.user import User, UserRole, UserStatus
 from app.db.models.work_order import WorkOrder, WorkOrderStatus, WorkOrderType
 
-async def create_user(
-    db: AsyncSession, login: str, role: UserRole, full_name: str | None = None
-) -> tuple[User, str]:
+
+async def create_user(db: AsyncSession, login: str, role: UserRole, full_name: str | None = None) -> tuple[User, str]:
     user = User(
         login=login,
         password_hash=hash_password("SuperSecret123!"),
@@ -27,11 +27,12 @@ async def create_user(
     session = UserSession(
         user_id=user.id,
         token_hash=t_hash,
-        expires_at=datetime.now(timezone.utc) + timedelta(hours=12),
+        expires_at=datetime.now(UTC) + timedelta(hours=12),
     )
     db.add(session)
     await db.commit()
     return user, raw_token
+
 
 @pytest.fixture
 async def sample_equip(db_session: AsyncSession) -> Equipment:
@@ -47,6 +48,7 @@ async def sample_equip(db_session: AsyncSession) -> Equipment:
     await db_session.commit()
     await db_session.refresh(eq)
     return eq
+
 
 @pytest.fixture
 async def users_setup(db_session: AsyncSession):
@@ -65,10 +67,9 @@ async def users_setup(db_session: AsyncSession):
         "admin": (adm, adm_tok),
     }
 
+
 @pytest.mark.asyncio
-async def test_admin_blocked_from_work_orders_and_history(
-    async_client: AsyncClient, users_setup, sample_equip
-):
+async def test_admin_blocked_from_work_orders_and_history(async_client: AsyncClient, users_setup, sample_equip):
     _, adm_token = users_setup["admin"]
     headers = {"Authorization": f"Bearer {adm_token}"}
 
@@ -97,10 +98,9 @@ async def test_admin_blocked_from_work_orders_and_history(
     assert res.status_code == 403
     assert res.json()["code"] == "ACCESS_DENIED"
 
+
 @pytest.mark.asyncio
-async def test_technician_cross_access_blocked_on_fsm(
-    async_client: AsyncClient, users_setup, sample_equip
-):
+async def test_technician_cross_access_blocked_on_fsm(async_client: AsyncClient, users_setup, sample_equip):
     _, eng_tok = users_setup["engineer"]
     tech_a, tech_a_tok = users_setup["tech_a"]
     _, tech_b_tok = users_setup["tech_b"]
@@ -147,10 +147,9 @@ async def test_technician_cross_access_blocked_on_fsm(
     )
     assert comp_b.status_code in (403, 404)
 
+
 @pytest.mark.asyncio
-async def test_operator_isolation_in_work_orders(
-    async_client: AsyncClient, users_setup, sample_equip
-):
+async def test_operator_isolation_in_work_orders(async_client: AsyncClient, users_setup, sample_equip):
     _, op1_tok = users_setup["op1"]
     _, op2_tok = users_setup["op2"]
 

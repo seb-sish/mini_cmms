@@ -1,11 +1,14 @@
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta, timezone
+
 import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.core.security import create_opaque_token, hash_password
 from app.db.models.equipment import Equipment, EquipmentStatus
 from app.db.models.session import UserSession
 from app.db.models.user import User, UserRole, UserStatus
+
 
 @pytest.fixture
 async def engineer_auth(db_session: AsyncSession) -> tuple[User, str]:
@@ -24,11 +27,12 @@ async def engineer_auth(db_session: AsyncSession) -> tuple[User, str]:
     session = UserSession(
         user_id=user.id,
         token_hash=t_hash,
-        expires_at=datetime.now(timezone.utc) + timedelta(hours=12),
+        expires_at=datetime.now(UTC) + timedelta(hours=12),
     )
     db_session.add(session)
     await db_session.commit()
     return user, raw_token
+
 
 @pytest.fixture
 async def sample_equipment(db_session: AsyncSession) -> Equipment:
@@ -45,22 +49,25 @@ async def sample_equipment(db_session: AsyncSession) -> Equipment:
     await db_session.refresh(eq)
     return eq
 
+
 @pytest.mark.asyncio
 async def test_create_plan_creates_schedules(async_client: AsyncClient, engineer_auth, sample_equipment):
     user, token = engineer_auth
     headers = {"Authorization": f"Bearer {token}"}
 
     # Create plan
-    res = await async_client.post("/api/v1/maintenance-plans", headers=headers, json={
-        "name": "Monthly Press Inspection",
-        "scope": "EQUIPMENT",
-        "equipment_id": str(sample_equipment.id),
-        "interval_days": 30,
-        "first_due_on": "2026-11-01",
-        "checklist": [
-            {"order": 1, "title": "Check oil level and pressure", "required": True}
-        ]
-    })
+    res = await async_client.post(
+        "/api/v1/maintenance-plans",
+        headers=headers,
+        json={
+            "name": "Monthly Press Inspection",
+            "scope": "EQUIPMENT",
+            "equipment_id": str(sample_equipment.id),
+            "interval_days": 30,
+            "first_due_on": "2026-11-01",
+            "checklist": [{"order": 1, "title": "Check oil level and pressure", "required": True}],
+        },
+    )
     assert res.status_code == 201
     plan = res.json()
     assert plan["name"] == "Monthly Press Inspection"

@@ -1,4 +1,5 @@
 from datetime import date, datetime, timedelta, timezone
+
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,11 +15,13 @@ from app.services.equipment_service import get_company_today
 from app.worker.main import WorkerSettings
 from app.worker.tasks import generate_maintenance_notifications
 
+
 def test_worker_settings_initialization():
     assert WorkerSettings.redis_settings is not None
     assert WorkerSettings.redis_settings.host == (settings.redis.URL.host or "localhost")
     assert WorkerSettings.functions == [generate_maintenance_notifications]
     assert len(WorkerSettings.cron_jobs) == 1
+
 
 @pytest.mark.asyncio
 async def test_arq_notification_generation(db_session: AsyncSession):

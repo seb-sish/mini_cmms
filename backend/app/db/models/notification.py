@@ -1,14 +1,25 @@
-from datetime import date, datetime, timezone
-from enum import StrEnum
 import uuid
+from datetime import UTC, date, datetime
+from enum import StrEnum
+from typing import TYPE_CHECKING
+
 from sqlalchemy import Date, DateTime, ForeignKey, Index, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+
 from app.db.base import Base, UUIDPrimaryKeyMixin
+
+if TYPE_CHECKING:
+    from app.db.models.equipment import Equipment
+    from app.db.models.maintenance_plan import MaintenancePlan
+    from app.db.models.maintenance_schedule import MaintenanceSchedule
+    from app.db.models.user import User
+
 
 class NotificationType(StrEnum):
     THREE_DAYS_BEFORE = "THREE_DAYS_BEFORE"
     ON_DUE_DATE = "ON_DUE_DATE"
+
 
 class Notification(Base, UUIDPrimaryKeyMixin):
     __tablename__ = "notifications"
@@ -38,7 +49,7 @@ class Notification(Base, UUIDPrimaryKeyMixin):
     message: Mapped[str] = mapped_column(String(500), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
-        default=lambda: datetime.now(timezone.utc),
+        default=lambda: datetime.now(UTC),
         nullable=False,
     )
 

@@ -1,17 +1,20 @@
-import pytest
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
+
+import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.core.security import create_opaque_token, hash_password
 from app.db.models.session import UserSession
 from app.db.models.user import User, UserRole, UserStatus
+
 
 @pytest.mark.asyncio
 async def test_malformed_json_returns_400_rfc9457(async_client: AsyncClient):
     response = await async_client.post(
         "/api/v1/auth/login",
-        content="{\"login\": \"bad_json",
+        content='{"login": "bad_json',
         headers={"Content-Type": "application/json"},
     )
     assert response.status_code == 400
@@ -20,6 +23,7 @@ async def test_malformed_json_returns_400_rfc9457(async_client: AsyncClient):
     assert data["type"] == "https://mini-cmms.example/problems/malformed-json"
     assert data["code"] == "MALFORMED_JSON"
     assert "detail" in data
+
 
 @pytest.mark.asyncio
 async def test_unsupported_media_type_returns_415_rfc9457(async_client: AsyncClient):
@@ -33,6 +37,7 @@ async def test_unsupported_media_type_returns_415_rfc9457(async_client: AsyncCli
     data = response.json()
     assert data["type"] == "https://mini-cmms.example/problems/unsupported-media-type"
     assert data["code"] == "UNSUPPORTED_MEDIA_TYPE"
+
 
 @pytest.mark.asyncio
 async def test_validation_error_structure_rfc9457(async_client: AsyncClient):
@@ -52,6 +57,7 @@ async def test_validation_error_structure_rfc9457(async_client: AsyncClient):
     assert "field" in data["errors"][0]
     assert "message" in data["errors"][0]
 
+
 @pytest.mark.asyncio
 async def test_unauthenticated_code_and_type(async_client: AsyncClient):
     response = await async_client.get("/api/v1/auth/me")
@@ -60,6 +66,7 @@ async def test_unauthenticated_code_and_type(async_client: AsyncClient):
     data = response.json()
     assert data["type"] == "https://mini-cmms.example/problems/unauthenticated"
     assert data["code"] == "UNAUTHENTICATED"
+
 
 @pytest.mark.asyncio
 async def test_weak_etag_returns_422_rfc9457(async_client: AsyncClient, db_session: AsyncSession):
@@ -78,7 +85,7 @@ async def test_weak_etag_returns_422_rfc9457(async_client: AsyncClient, db_sessi
     session = UserSession(
         user_id=user.id,
         token_hash=t_hash,
-        expires_at=datetime.now(timezone.utc) + timedelta(hours=12),
+        expires_at=datetime.now(UTC) + timedelta(hours=12),
     )
     db_session.add(session)
     await db_session.commit()

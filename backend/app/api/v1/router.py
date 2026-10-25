@@ -1,4 +1,5 @@
 from fastapi import APIRouter
+
 from app.api.v1.auth import auth_router
 from app.api.v1.equipment import equipment_router
 from app.api.v1.faults import faults_router

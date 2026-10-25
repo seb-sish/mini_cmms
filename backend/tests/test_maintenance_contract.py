@@ -1,5 +1,6 @@
-from datetime import date, datetime, timedelta, timezone
 import uuid
+from datetime import UTC, date, datetime, timedelta, timezone
+
 import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,9 +12,8 @@ from app.db.models.session import UserSession
 from app.db.models.user import User, UserRole, UserStatus
 from app.db.models.work_order import WorkOrder, WorkOrderStatus, WorkOrderType
 
-async def create_user(
-    db: AsyncSession, login: str, role: UserRole, full_name: str | None = None
-) -> tuple[User, str]:
+
+async def create_user(db: AsyncSession, login: str, role: UserRole, full_name: str | None = None) -> tuple[User, str]:
     user = User(
         login=login,
         password_hash=hash_password("SuperSecret123!"),
@@ -29,11 +29,12 @@ async def create_user(
     session = UserSession(
         user_id=user.id,
         token_hash=t_hash,
-        expires_at=datetime.now(timezone.utc) + timedelta(hours=12),
+        expires_at=datetime.now(UTC) + timedelta(hours=12),
     )
     db.add(session)
     await db.commit()
     return user, raw_token
+
 
 @pytest.fixture
 async def users_setup(db_session: AsyncSession):
@@ -47,6 +48,7 @@ async def users_setup(db_session: AsyncSession):
         "operator": (op, op_tok),
         "admin": (adm, adm_tok),
     }
+
 
 @pytest.fixture
 async def sample_press(db_session: AsyncSession) -> Equipment:
@@ -63,10 +65,9 @@ async def sample_press(db_session: AsyncSession) -> Equipment:
     await db_session.refresh(eq)
     return eq
 
+
 @pytest.mark.asyncio
-async def test_maintenance_rbac_admin_and_operator_blocked(
-    async_client: AsyncClient, users_setup, sample_press
-):
+async def test_maintenance_rbac_admin_and_operator_blocked(async_client: AsyncClient, users_setup, sample_press):
     _, adm_token = users_setup["admin"]
     _, op_token = users_setup["operator"]
 
@@ -80,10 +81,9 @@ async def test_maintenance_rbac_admin_and_operator_blocked(
         assert res2.status_code == 403
         assert res2.json()["code"] == "ACCESS_DENIED"
 
+
 @pytest.mark.asyncio
-async def test_maintenance_plan_and_schedule_contract_fields(
-    async_client: AsyncClient, users_setup, sample_press
-):
+async def test_maintenance_plan_and_schedule_contract_fields(async_client: AsyncClient, users_setup, sample_press):
     _, eng_token = users_setup["engineer"]
     headers = {"Authorization": f"Bearer {eng_token}"}
 
@@ -109,9 +109,7 @@ async def test_maintenance_plan_and_schedule_contract_fields(
     assert plan["checklist"][0]["required"] is True
 
     # 2. Check schedule response schema
-    sched_res = await async_client.get(
-        f"/api/v1/maintenance-schedules?plan_id={plan['id']}", headers=headers
-    )
+    sched_res = await async_client.get(f"/api/v1/maintenance-schedules?plan_id={plan['id']}", headers=headers)
     assert sched_res.status_code == 200
     scheds = sched_res.json()["items"]
     assert len(scheds) == 1
@@ -119,6 +117,7 @@ async def test_maintenance_plan_and_schedule_contract_fields(
     assert sched["active"] is True
     assert sched["has_current_work_order"] is False
     assert sched["is_overdue"] is False
+
 
 @pytest.mark.asyncio
 async def test_q16_invariants_active_work_order_and_non_advancing_due_date(
@@ -146,9 +145,7 @@ async def test_q16_invariants_active_work_order_and_non_advancing_due_date(
     plan_id = plan["id"]
     plan_version = plan["version"]
 
-    sched_res = await async_client.get(
-        f"/api/v1/maintenance-schedules?plan_id={plan_id}", headers=headers
-    )
+    sched_res = await async_client.get(f"/api/v1/maintenance-schedules?plan_id={plan_id}", headers=headers)
     sched_id = uuid.UUID(sched_res.json()["items"][0]["id"])
 
     # Create an active PLANNED work order for this schedule
@@ -168,9 +165,7 @@ async def test_q16_invariants_active_work_order_and_non_advancing_due_date(
     await db_session.commit()
 
     # Schedule should now have has_current_work_order == True
-    sched_check = await async_client.get(
-        f"/api/v1/maintenance-schedules/{sched_id}", headers=headers
-    )
+    sched_check = await async_client.get(f"/api/v1/maintenance-schedules/{sched_id}", headers=headers)
     assert sched_check.status_code == 200
     assert sched_check.json()["has_current_work_order"] is True
 

@@ -1,7 +1,9 @@
-from datetime import datetime, timezone
-from typing import Any, Optional
 import uuid
+from datetime import UTC, datetime
+from typing import Any
+
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator, model_validator
+
 from app.db.models.user import UserRole, UserStatus
 
 
@@ -16,9 +18,9 @@ class UserCreate(BaseModel):
 class UserPatch(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    role: Optional[UserRole] = None
-    status: Optional[UserStatus] = None
-    new_password: Optional[str] = Field(default=None, min_length=12, max_length=128)
+    role: UserRole | None = None
+    status: UserStatus | None = None
+    new_password: str | None = Field(default=None, min_length=12, max_length=128)
 
     @field_validator("role", mode="before")
     @classmethod
@@ -76,7 +78,7 @@ class UserRead(BaseModel):
     @field_serializer("created_at", "updated_at")
     def serialize_datetime(self, dt: datetime, _info) -> str:
         if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
+            dt = dt.replace(tzinfo=UTC)
         else:
-            dt = dt.astimezone(timezone.utc)
+            dt = dt.astimezone(UTC)
         return dt.isoformat().replace("+00:00", "Z")

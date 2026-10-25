@@ -3,7 +3,6 @@ import asyncio
 import getpass
 import os
 import sys
-from typing import Optional
 
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -15,9 +14,9 @@ from app.db.models.user import User, UserRole, UserStatus
 
 async def bootstrap_admin_core(
     session: AsyncSession,
-    login: Optional[str] = None,
-    password: Optional[str] = None,
-    full_name: Optional[str] = None,
+    login: str | None = None,
+    password: str | None = None,
+    full_name: str | None = None,
 ) -> tuple[bool, str]:
     """
     Core logic for bootstrapping the initial administrator account.
@@ -68,7 +67,10 @@ async def bootstrap_admin_core(
     )
     admin_count = (await session.execute(active_admin_stmt)).scalar_one()
     if admin_count > 0:
-        return False, f"An active administrator already exists in the system ({admin_count} active admin(s)). No action taken."
+        return (
+            False,
+            f"An active administrator already exists in the system ({admin_count} active admin(s)). No action taken.",
+        )
 
     # 4. Create first administrator
     new_admin = User(
@@ -85,9 +87,9 @@ async def bootstrap_admin_core(
 
 
 async def run_bootstrap(
-    login: Optional[str] = None,
+    login: str | None = None,
     password_stdin: bool = False,
-    full_name: Optional[str] = None,
+    full_name: str | None = None,
 ) -> None:
     password = None
     if password_stdin:

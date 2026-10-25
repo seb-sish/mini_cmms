@@ -1,6 +1,7 @@
 import asyncio
-from datetime import date, datetime, timedelta, timezone
 import uuid
+from datetime import date, datetime, timedelta, timezone
+
 import pytest
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -18,9 +19,7 @@ from app.services.user_service import UserService
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_two_admins_cannot_simultaneously_demote_each_other(
-    session_factory: async_sessionmaker[AsyncSession]
-):
+async def test_two_admins_cannot_simultaneously_demote_each_other(session_factory: async_sessionmaker[AsyncSession]):
     admin1_id = uuid.uuid4()
     admin2_id = uuid.uuid4()
 
@@ -72,7 +71,9 @@ async def test_two_admins_cannot_simultaneously_demote_each_other(
     results = await asyncio.gather(demote_admin1(), demote_admin2(), return_exceptions=True)
 
     successes = [r for r in results if isinstance(r, User)]
-    conflicts = [r for r in results if isinstance(r, AppException) and r.status == 409 and r.code == "LAST_ACTIVE_ADMIN"]
+    conflicts = [
+        r for r in results if isinstance(r, AppException) and r.status == 409 and r.code == "LAST_ACTIVE_ADMIN"
+    ]
 
     assert len(successes) == 1, f"Expected exactly 1 demote to succeed, got {len(successes)}: {results}"
     assert len(conflicts) == 1, f"Expected exactly 1 LAST_ACTIVE_ADMIN conflict, got {len(conflicts)}: {results}"
@@ -80,17 +81,17 @@ async def test_two_admins_cannot_simultaneously_demote_each_other(
     # Verify that in database at least one ACTIVE ADMIN strictly remains
     async with session_factory() as s:
         active_admins = (
-            await s.execute(
-                select(User).where(User.role == UserRole.ADMIN, User.status == UserStatus.ACTIVE)
-            )
-        ).scalars().all()
+            (await s.execute(select(User).where(User.role == UserRole.ADMIN, User.status == UserStatus.ACTIVE)))
+            .scalars()
+            .all()
+        )
         assert len(active_admins) == 1, f"Expected exactly 1 active admin remaining, found {len(active_admins)}"
 
 
 @pytest.mark.integration
 @pytest.mark.asyncio
 async def test_technician_role_cannot_be_changed_with_active_or_completed_work_order(
-    session_factory: async_sessionmaker[AsyncSession]
+    session_factory: async_sessionmaker[AsyncSession],
 ):
     tech_id = uuid.uuid4()
     eq_id = uuid.uuid4()
@@ -219,9 +220,7 @@ async def test_login_interleaved_with_password_reset(
         # Check in DB that this session is revoked because reset committed
         async with session_factory() as s:
             sess = (
-                await s.execute(
-                    select(UserSession).where(UserSession.token_hash == token_hash)
-                )
+                await s.execute(select(UserSession).where(UserSession.token_hash == token_hash))
             ).scalar_one_or_none()
             assert sess is not None
             assert sess.revoked_at is not None, "Session issued with old password must be revoked by reset"

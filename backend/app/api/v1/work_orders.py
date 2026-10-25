@@ -1,5 +1,5 @@
-from typing import Optional
 import uuid
+
 from fastapi import APIRouter, Depends, Header, Query, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -24,20 +24,21 @@ from app.services.work_order_service import WorkOrderService
 
 work_orders_router = APIRouter(prefix="/work-orders", tags=["Work Orders"])
 
+
 @work_orders_router.get(
     "",
     response_model=WorkOrderPage,
     status_code=status.HTTP_200_OK,
 )
 async def list_work_orders(
-    equipment_id: Optional[uuid.UUID] = Query(None),
-    type: Optional[WorkOrderType] = Query(None),
-    status_filter: Optional[WorkOrderStatus] = Query(None, alias="status"),
-    priority: Optional[WorkOrderPriority] = Query(None),
-    assignee_id: Optional[uuid.UUID] = Query(None),
-    fault_id: Optional[uuid.UUID] = Query(None),
-    schedule_id: Optional[uuid.UUID] = Query(None),
-    q: Optional[str] = Query(None, min_length=1, max_length=200),
+    equipment_id: uuid.UUID | None = Query(None),
+    type: WorkOrderType | None = Query(None),
+    status_filter: WorkOrderStatus | None = Query(None, alias="status"),
+    priority: WorkOrderPriority | None = Query(None),
+    assignee_id: uuid.UUID | None = Query(None),
+    fault_id: uuid.UUID | None = Query(None),
+    schedule_id: uuid.UUID | None = Query(None),
+    q: str | None = Query(None, min_length=1, max_length=200),
     sort: str = Query("-created_at"),
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
@@ -69,6 +70,7 @@ async def list_work_orders(
         offset=offset,
     )
 
+
 @work_orders_router.post(
     "",
     response_model=WorkOrderRead,
@@ -86,6 +88,7 @@ async def create_work_order(
     response.headers["Location"] = f"/api/v1/work-orders/{wo.id}"
     return wo
 
+
 @work_orders_router.get(
     "/{work_order_id}",
     response_model=WorkOrderRead,
@@ -101,6 +104,7 @@ async def get_work_order(
     etag = f'"{wo.id}:{wo.version}"'
     response.headers["ETag"] = etag
     return wo
+
 
 @work_orders_router.patch(
     "/{work_order_id}",
@@ -121,6 +125,7 @@ async def patch_work_order(
     response.headers["ETag"] = etag
     return wo
 
+
 @work_orders_router.post(
     "/{work_order_id}/assign",
     response_model=WorkOrderRead,
@@ -133,12 +138,11 @@ async def assign_work_order(
     session: AsyncSession = Depends(get_session),
     current_user: User = Depends(require_role("ENGINEER")),
 ):
-    wo = await WorkOrderService.assign_work_order(
-        session, current_user, work_order_id, payload.assignee_id
-    )
+    wo = await WorkOrderService.assign_work_order(session, current_user, work_order_id, payload.assignee_id)
     etag = f'"{wo.id}:{wo.version}"'
     response.headers["ETag"] = etag
     return wo
+
 
 @work_orders_router.post(
     "/{work_order_id}/reassign",
@@ -152,12 +156,11 @@ async def reassign_work_order(
     session: AsyncSession = Depends(get_session),
     current_user: User = Depends(require_role("ENGINEER")),
 ):
-    wo = await WorkOrderService.reassign_work_order(
-        session, current_user, work_order_id, payload.assignee_id
-    )
+    wo = await WorkOrderService.reassign_work_order(session, current_user, work_order_id, payload.assignee_id)
     etag = f'"{wo.id}:{wo.version}"'
     response.headers["ETag"] = etag
     return wo
+
 
 @work_orders_router.post(
     "/{work_order_id}/start",
@@ -179,6 +182,7 @@ async def start_work_order(
     etag = f'"{wo.id}:{wo.version}"'
     response.headers["ETag"] = etag
     return wo
+
 
 @work_orders_router.patch(
     "/{work_order_id}/checklist/{item_id}",
@@ -210,6 +214,7 @@ async def patch_checklist_item(
     response.headers["ETag"] = etag
     return item
 
+
 @work_orders_router.post(
     "/{work_order_id}/complete",
     response_model=WorkOrderRead,
@@ -232,6 +237,7 @@ async def complete_work_order(
     etag = f'"{wo.id}:{wo.version}"'
     response.headers["ETag"] = etag
     return wo
+
 
 @work_orders_router.post(
     "/{work_order_id}/close",
@@ -258,6 +264,7 @@ async def close_work_order(
     response.headers["ETag"] = etag
     return wo
 
+
 @work_orders_router.post(
     "/{work_order_id}/cancel",
     response_model=WorkOrderRead,
@@ -270,12 +277,11 @@ async def cancel_work_order(
     session: AsyncSession = Depends(get_session),
     current_user: User = Depends(require_role("ENGINEER")),
 ):
-    wo = await WorkOrderService.cancel_work_order(
-        session, current_user, work_order_id, payload.reason
-    )
+    wo = await WorkOrderService.cancel_work_order(session, current_user, work_order_id, payload.reason)
     etag = f'"{wo.id}:{wo.version}"'
     response.headers["ETag"] = etag
     return wo
+
 
 @work_orders_router.get(
     "/{work_order_id}/events",

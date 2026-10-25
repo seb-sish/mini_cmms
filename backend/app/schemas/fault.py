@@ -1,7 +1,9 @@
-from datetime import date, datetime, timezone
-from typing import Any, Optional
 import uuid
+from datetime import UTC, date, datetime
+from typing import Any
+
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator, model_validator
+
 from app.db.models.fault import FaultSeverity, FaultStatus
 
 
@@ -17,9 +19,9 @@ class FaultCreate(BaseModel):
 class FaultPatch(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    description: Optional[str] = Field(default=None, min_length=5, max_length=2000, pattern=r"\S")
-    severity: Optional[FaultSeverity] = None
-    detected_on: Optional[date] = None
+    description: str | None = Field(default=None, min_length=5, max_length=2000, pattern=r"\S")
+    severity: FaultSeverity | None = None
+    detected_on: date | None = None
 
     @field_validator("description", "severity", "detected_on", mode="before")
     @classmethod
@@ -55,7 +57,7 @@ class FaultRead(BaseModel):
     @field_serializer("created_at", "updated_at")
     def serialize_datetime(self, dt: datetime, _info) -> str:
         if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
+            dt = dt.replace(tzinfo=UTC)
         else:
-            dt = dt.astimezone(timezone.utc)
+            dt = dt.astimezone(UTC)
         return dt.isoformat().replace("+00:00", "Z")

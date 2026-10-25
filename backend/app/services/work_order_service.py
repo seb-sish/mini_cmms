@@ -1,14 +1,13 @@
-from app.services.equipment_service import get_company_today
-import zoneinfo
-from app.config import settings
-from datetime import date, datetime, timedelta, timezone
-from typing import Optional
 import uuid
+import zoneinfo
+from datetime import UTC, date, datetime, timedelta
+
 from sqlalchemy import case, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.config import settings
 from app.db.models.equipment import Equipment
 from app.db.models.fault import Fault, FaultStatus
 from app.db.models.maintenance_plan import MaintenancePlan
@@ -25,6 +24,7 @@ from app.db.models.work_order import (
 from app.db.models.work_order_event import WorkOrderEvent, WorkOrderEventType
 from app.errors.handlers import AppException
 from app.schemas.work_order import WorkOrderCreate, WorkOrderPatch
+from app.services.equipment_service import get_company_today
 
 ACTIVE_STATUSES = [
     WorkOrderStatus.CREATED,
@@ -51,17 +51,16 @@ STATUS_RANK_DESC = {
     WorkOrderStatus.CREATED: 5,
 }
 
+
 class WorkOrderService:
     @staticmethod
     async def generate_work_order_number(session: AsyncSession) -> str:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         suffix = f"{now.strftime('%H%M%S')}{uuid.uuid4().hex[:4].upper()}"
         return f"WO-{now.strftime('%Y%m%d')}-{suffix}"
 
     @classmethod
-    async def create_work_order(
-        cls, session: AsyncSession, current_user: User, data: WorkOrderCreate
-    ) -> WorkOrder:
+    async def create_work_order(cls, session: AsyncSession, current_user: User, data: WorkOrderCreate) -> WorkOrder:
         if current_user.role == UserRole.OPERATOR:
             if data.type != WorkOrderType.REPAIR:
                 raise AppException(403, "ACCESS_DENIED", "Operators can only create REPAIR work orders")
@@ -90,7 +89,9 @@ class WorkOrderService:
                 if fault.equipment_id != equipment.id:
                     raise AppException(422, "EQUIPMENT_MISMATCH", "Fault does not match equipment")
                 if fault.status == FaultStatus.RESOLVED:
-                    raise AppException(409, "FAULT_ALREADY_RESOLVED", "Cannot create repair work order for resolved fault")
+                    raise AppException(
+                        409, "FAULT_ALREADY_RESOLVED", "Cannot create repair work order for resolved fault"
+                    )
 
                 dup_q = select(WorkOrder).where(
                     WorkOrder.fault_id == fault.id,
@@ -106,10 +107,13 @@ class WorkOrderService:
             if data.fault_id is not None:
                 raise AppException(422, "VALIDATION_ERROR", "fault_id forbidden for PLANNED")
 
-            sched_pre = (await session.execute(
-                select(MaintenanceSchedule.plan_id, MaintenanceSchedule.equipment_id)
-                .where(MaintenanceSchedule.id == data.schedule_id)
-            )).first()
+            sched_pre = (
+                await session.execute(
+                    select(MaintenanceSchedule.plan_id, MaintenanceSchedule.equipment_id).where(
+                        MaintenanceSchedule.id == data.schedule_id
+                    )
+                )
+            ).first()
             if not sched_pre:
                 raise AppException(404, "NOT_FOUND", "Maintenance schedule not found")
             if sched_pre[1] != data.equipment_id:
@@ -128,11 +132,7 @@ class WorkOrderService:
             if equipment.archived_at is not None:
                 raise AppException(409, "EQUIPMENT_ARCHIVED", "Equipment is archived")
 
-            sched_stmt = (
-                select(MaintenanceSchedule)
-                .where(MaintenanceSchedule.id == data.schedule_id)
-                .with_for_update()
-            )
+            sched_stmt = select(MaintenanceSchedule).where(MaintenanceSchedule.id == data.schedule_id).with_for_update()
             schedule = (await session.execute(sched_stmt)).scalar_one_or_none()
 
             if not plan or not plan.is_active or not schedule or not schedule.is_active:
@@ -144,7 +144,9 @@ class WorkOrderService:
             )
             existing = (await session.execute(dup_q)).scalars().first()
             if existing:
-                raise AppException(409, "DUPLICATE_PLANNED_WORK_ORDER", "Active planned work order exists for this schedule")
+                raise AppException(
+                    409, "DUPLICATE_PLANNED_WORK_ORDER", "Active planned work order exists for this schedule"
+                )
 
             planned_due_on = schedule.next_due_on
             checklist_templates = plan.checklist or []
@@ -195,7 +197,9 @@ class WorkOrderService:
             if "uq_work_orders_active_fault" in err_msg:
                 raise AppException(409, "DUPLICATE_ACTIVE_WORK_ORDER", "Active work order exists for this fault")
             if "uq_work_orders_active_schedule" in err_msg:
-                raise AppException(409, "DUPLICATE_PLANNED_WORK_ORDER", "Active planned work order exists for this schedule")
+                raise AppException(
+                    409, "DUPLICATE_PLANNED_WORK_ORDER", "Active planned work order exists for this schedule"
+                )
             raise
 
         return await cls.get_work_order(session, current_user, wo.id)
@@ -205,14 +209,14 @@ class WorkOrderService:
         cls,
         session: AsyncSession,
         current_user: User,
-        equipment_id: Optional[uuid.UUID] = None,
-        type: Optional[WorkOrderType] = None,
-        status: Optional[WorkOrderStatus] = None,
-        priority: Optional[WorkOrderPriority] = None,
-        assignee_id: Optional[uuid.UUID] = None,
-        fault_id: Optional[uuid.UUID] = None,
-        schedule_id: Optional[uuid.UUID] = None,
-        q: Optional[str] = None,
+        equipment_id: uuid.UUID | None = None,
+        type: WorkOrderType | None = None,
+        status: WorkOrderStatus | None = None,
+        priority: WorkOrderPriority | None = None,
+        assignee_id: uuid.UUID | None = None,
+        fault_id: uuid.UUID | None = None,
+        schedule_id: uuid.UUID | None = None,
+        q: str | None = None,
         sort: str = "-created_at",
         limit: int = 20,
         offset: int = 0,
@@ -258,12 +262,9 @@ class WorkOrderService:
             count_query = count_query.where(*conditions)
         total = (await session.execute(count_query)).scalar() or 0
 
-        query = (
-            select(WorkOrder)
-            .options(
-                selectinload(WorkOrder.checklist),
-                selectinload(WorkOrder.events),
-            )
+        query = select(WorkOrder).options(
+            selectinload(WorkOrder.checklist),
+            selectinload(WorkOrder.events),
         )
         if conditions:
             query = query.where(*conditions)
@@ -286,9 +287,7 @@ class WorkOrderService:
         return list(items), total
 
     @classmethod
-    async def get_work_order(
-        cls, session: AsyncSession, current_user: User, work_order_id: uuid.UUID
-    ) -> WorkOrder:
+    async def get_work_order(cls, session: AsyncSession, current_user: User, work_order_id: uuid.UUID) -> WorkOrder:
         query = (
             select(WorkOrder)
             .options(
@@ -356,7 +355,7 @@ class WorkOrderService:
 
         if has_changes:
             wo.version += 1
-            wo.updated_at = datetime.now(timezone.utc)
+            wo.updated_at = datetime.now(UTC)
             event = WorkOrderEvent(
                 work_order_id=wo.id,
                 event_type=WorkOrderEventType.UPDATED,
@@ -439,9 +438,7 @@ class WorkOrderService:
         return await cls.get_work_order(session, current_user, wo.id)
 
     @classmethod
-    async def start_work_order(
-        cls, session: AsyncSession, current_user: User, work_order_id: uuid.UUID
-    ) -> WorkOrder:
+    async def start_work_order(cls, session: AsyncSession, current_user: User, work_order_id: uuid.UUID) -> WorkOrder:
         wo = await cls.get_work_order_for_update(session, work_order_id)
 
         if current_user.role == UserRole.TECHNICIAN and wo.assignee_id != current_user.id:
@@ -453,7 +450,7 @@ class WorkOrderService:
             raise AppException(409, "INVALID_WORK_ORDER_STATE", "Work order can only be started from ASSIGNED state")
 
         wo.status = WorkOrderStatus.IN_PROGRESS
-        wo.started_at = datetime.now(timezone.utc)
+        wo.started_at = datetime.now(UTC)
         wo.version += 1
 
         if wo.fault_id:
@@ -485,8 +482,8 @@ class WorkOrderService:
         work_order_id: uuid.UUID,
         item_id: uuid.UUID,
         checked: bool,
-        comment: Optional[str] = None,
-        if_match: Optional[str] = None,
+        comment: str | None = None,
+        if_match: str | None = None,
         comment_set: bool = True,
     ) -> tuple[WorkChecklistItem, WorkOrder]:
         if not if_match:
@@ -516,19 +513,21 @@ class WorkOrderService:
             has_changes = True
             item.checked = checked
             if checked:
-                item.checked_at = datetime.now(timezone.utc)
+                item.checked_at = datetime.now(UTC)
             else:
                 item.checked_at = None
 
         if comment_set:
-            clean_comment = comment.strip() if (comment is not None and comment.strip()) else (comment if comment == "" else None)
+            clean_comment = (
+                comment.strip() if (comment is not None and comment.strip()) else (comment if comment == "" else None)
+            )
             if item.comment != clean_comment:
                 item.comment = clean_comment
                 has_changes = True
 
         if has_changes:
             wo.version += 1
-            wo.updated_at = datetime.now(timezone.utc)
+            wo.updated_at = datetime.now(UTC)
             event = WorkOrderEvent(
                 work_order_id=wo.id,
                 event_type=WorkOrderEventType.CHECKLIST_ITEM_UPDATED,
@@ -558,7 +557,7 @@ class WorkOrderService:
 
         prev_status = wo.status
         wo.status = WorkOrderStatus.CANCELLED
-        wo.cancelled_at = datetime.now(timezone.utc)
+        wo.cancelled_at = datetime.now(UTC)
         wo.cancelled_by = current_user.id
         wo.cancellation_reason = reason
 
@@ -591,7 +590,7 @@ class WorkOrderService:
         current_user: User,
         work_order_id: uuid.UUID,
         result: str,
-        replaced_parts: Optional[list[str]] = None,
+        replaced_parts: list[str] | None = None,
     ) -> WorkOrder:
         wo = await cls.get_work_order_for_update(session, work_order_id)
 
@@ -615,7 +614,7 @@ class WorkOrderService:
                 if wo.planned_due_on and (company_today + timedelta(days=plan.interval_days) <= wo.planned_due_on):
                     raise AppException(409, "TOO_EARLY_TO_COMPLETE", "Completed too early before next schedule window")
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         wo.status = WorkOrderStatus.COMPLETED
         wo.completed_at = now
         wo.result = result
@@ -645,44 +644,41 @@ class WorkOrderService:
         if current_user.role != UserRole.ENGINEER:
             raise AppException(403, "ACCESS_DENIED", "Only engineer can close work orders")
 
-        meta = (await session.execute(
-            select(WorkOrder.type, WorkOrder.schedule_id, WorkOrder.fault_id, WorkOrder.equipment_id)
-            .where(WorkOrder.id == work_order_id)
-        )).first()
+        meta = (
+            await session.execute(
+                select(WorkOrder.type, WorkOrder.schedule_id, WorkOrder.fault_id, WorkOrder.equipment_id).where(
+                    WorkOrder.id == work_order_id
+                )
+            )
+        ).first()
         if not meta:
             raise AppException(404, "NOT_FOUND", "Work order not found")
         wo_type, schedule_id, fault_id, equipment_id = meta
 
         if wo_type == WorkOrderType.PLANNED and schedule_id:
-            sched_meta = (await session.execute(
-                select(MaintenanceSchedule.plan_id).where(MaintenanceSchedule.id == schedule_id)
-            )).first()
+            sched_meta = (
+                await session.execute(select(MaintenanceSchedule.plan_id).where(MaintenanceSchedule.id == schedule_id))
+            ).first()
             if sched_meta and sched_meta[0]:
                 await session.execute(
                     select(MaintenancePlan).where(MaintenancePlan.id == sched_meta[0]).with_for_update()
                 )
             if equipment_id:
-                await session.execute(
-                    select(Equipment).where(Equipment.id == equipment_id).with_for_update()
-                )
+                await session.execute(select(Equipment).where(Equipment.id == equipment_id).with_for_update())
             await session.execute(
                 select(MaintenanceSchedule).where(MaintenanceSchedule.id == schedule_id).with_for_update()
             )
         elif wo_type == WorkOrderType.REPAIR:
             if equipment_id:
-                await session.execute(
-                    select(Equipment).where(Equipment.id == equipment_id).with_for_update()
-                )
+                await session.execute(select(Equipment).where(Equipment.id == equipment_id).with_for_update())
             if fault_id:
-                await session.execute(
-                    select(Fault).where(Fault.id == fault_id).with_for_update()
-                )
+                await session.execute(select(Fault).where(Fault.id == fault_id).with_for_update())
 
         wo = await cls.get_work_order_for_update(session, work_order_id)
         if wo.status != WorkOrderStatus.COMPLETED:
             raise AppException(409, "INVALID_WORK_ORDER_STATE", "Work order must be COMPLETED to close")
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         wo.status = WorkOrderStatus.CLOSED
         wo.closed_at = now
         wo.closed_by = current_user.id
@@ -703,7 +699,7 @@ class WorkOrderService:
                 if wo.completed_at:
                     c_dt = wo.completed_at
                     if c_dt.tzinfo is None:
-                        c_dt = c_dt.replace(tzinfo=timezone.utc)
+                        c_dt = c_dt.replace(tzinfo=UTC)
                     completed_date = c_dt.astimezone(zoneinfo.ZoneInfo(settings.app.COMPANY_TIMEZONE)).date()
                 else:
                     completed_date = get_company_today()
@@ -760,16 +756,17 @@ class WorkOrderService:
         items = (await session.execute(q)).scalars().all()
         return list(items), total
 
+
 class WorkHistoryService:
     @classmethod
     async def list_work_history(
         cls,
         session: AsyncSession,
         current_user: User,
-        equipment_id: Optional[uuid.UUID] = None,
-        technician_id: Optional[uuid.UUID] = None,
-        completed_from: Optional[date] = None,
-        completed_to: Optional[date] = None,
+        equipment_id: uuid.UUID | None = None,
+        technician_id: uuid.UUID | None = None,
+        completed_from: date | None = None,
+        completed_to: date | None = None,
         limit: int = 20,
         offset: int = 0,
     ) -> tuple[list[WorkHistory], int]:
@@ -789,11 +786,7 @@ class WorkHistoryService:
             conditions.append(func.date(WorkHistory.completed_at) <= completed_to)
 
         if current_user.role == UserRole.OPERATOR:
-            author_orders_subq = (
-                select(WorkOrder.id)
-                .where(WorkOrder.author_id == current_user.id)
-                .scalar_subquery()
-            )
+            author_orders_subq = select(WorkOrder.id).where(WorkOrder.author_id == current_user.id).scalar_subquery()
             conditions.append(WorkHistory.work_order_id.in_(author_orders_subq))
 
         count_q = select(func.count(WorkHistory.id))
@@ -809,9 +802,7 @@ class WorkHistoryService:
         return list(items), total
 
     @classmethod
-    async def get_work_history(
-        cls, session: AsyncSession, current_user: User, history_id: uuid.UUID
-    ) -> WorkHistory:
+    async def get_work_history(cls, session: AsyncSession, current_user: User, history_id: uuid.UUID) -> WorkHistory:
         wh = await session.get(WorkHistory, history_id)
         if not wh:
             raise AppException(404, "NOT_FOUND", "Work history entry not found")

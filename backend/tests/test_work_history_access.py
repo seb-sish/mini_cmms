@@ -1,5 +1,6 @@
-from datetime import date, datetime, timedelta, timezone
 import uuid
+from datetime import UTC, date, datetime, timedelta, timezone
+
 import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -28,7 +29,7 @@ async def create_user_with_session(db: AsyncSession, login: str, role: UserRole)
     sess = UserSession(
         user_id=user.id,
         token_hash=t_hash,
-        expires_at=datetime.now(timezone.utc) + timedelta(hours=12),
+        expires_at=datetime.now(UTC) + timedelta(hours=12),
     )
     db.add(sess)
     await db.commit()
@@ -59,7 +60,7 @@ async def test_work_history_access_matrix(async_client: AsyncClient, db_session:
     await db_session.flush()
 
     # Create work order assigned to tech1, authored by operator
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     wo = WorkOrder(
         number="WO-2026-88881",
         title="Fix Spindle Alignment",
