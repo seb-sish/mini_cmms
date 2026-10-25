@@ -100,9 +100,7 @@ async def test_equipment_create_applies_requested_status(async_client: AsyncClie
 
 
 @pytest.mark.asyncio
-async def test_equipment_patch_applies_inventory_number_and_commissioned_on(
-    async_client: AsyncClient, engineer_auth
-):
+async def test_equipment_patch_applies_inventory_number_and_commissioned_on(async_client: AsyncClient, engineer_auth):
     """PATCH применяет inventory_number и commissioned_on и увеличивает версию."""
     _, token = engineer_auth
     headers = {"Authorization": f"Bearer {token}"}
