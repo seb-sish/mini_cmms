@@ -1,3 +1,4 @@
+from typing import Optional
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field, PostgresDsn, RedisDsn
 
@@ -42,7 +43,7 @@ class SecuritySettings(SettingsBase):
     RATE_LIMIT_MAX_ATTEMPTS: int = 5
     RATE_LIMIT_WINDOW_SECONDS: int = 600
     FIRST_ADMIN_LOGIN: str = "admin"
-    FIRST_ADMIN_PASSWORD: str = "AdminSecret123!"
+    FIRST_ADMIN_PASSWORD: Optional[str] = None
 
 class Settings(BaseSettings):
     app: AppSettings = Field(default_factory=AppSettings)
