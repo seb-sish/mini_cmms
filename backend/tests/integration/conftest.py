@@ -72,6 +72,14 @@ def validate_test_redis(url: str) -> None:
 _migrations_applied = False
 
 
+@pytest.fixture(scope="session")
+def contract_oracle():
+    """Oracle проверки фактических ответов по нормативной OpenAPI."""
+    from tests.contract.oracle import build_oracle, load_spec
+
+    return build_oracle(load_spec())
+
+
 @pytest_asyncio.fixture(scope="session")
 async def apply_test_migrations() -> None:
     global _migrations_applied
