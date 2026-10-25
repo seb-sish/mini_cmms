@@ -83,3 +83,48 @@ async def test_create_plan_creates_schedules(async_client: AsyncClient, engineer
     assert items[0]["equipment_id"] == str(sample_equipment.id)
     assert items[0]["next_due_on"] == "2026-11-01"
     assert items[0]["active"] is True
+
+
+@pytest.mark.asyncio
+async def test_plan_checklist_noop_keeps_ids_and_version(async_client: AsyncClient, engineer_auth, sample_equipment):
+    """Повтор того же шаблона checklist — no-op: id, версия и updated_at не меняются."""
+    _, token = engineer_auth
+    headers = {"Authorization": f"Bearer {token}"}
+
+    res = await async_client.post(
+        "/api/v1/maintenance-plans",
+        headers=headers,
+        json={
+            "name": "Noop Plan",
+            "scope": "CATEGORY",
+            "category": "Machining",
+            "interval_days": 30,
+            "first_due_on": "2026-11-01",
+            "checklist": [{"order": 1, "title": "Check oil level and pressure", "required": True}],
+        },
+    )
+    assert res.status_code == 201
+    plan = res.json()
+    template_id = plan["checklist"][0]["id"]
+    version = plan["version"]
+
+    res = await async_client.patch(
+        f"/api/v1/maintenance-plans/{plan['id']}",
+        headers={**headers, "If-Match": f'"{plan["id"]}:{version}"'},
+        json={"checklist": [{"order": 1, "title": "Check oil level and pressure", "required": True}]},
+    )
+    assert res.status_code == 200
+    body = res.json()
+    assert body["checklist"][0]["id"] == template_id
+    assert body["version"] == version
+
+    # Изменение состава шаблона — обычное обновление с новой версией.
+    res = await async_client.patch(
+        f"/api/v1/maintenance-plans/{plan['id']}",
+        headers={**headers, "If-Match": f'"{plan["id"]}:{version}"'},
+        json={"checklist": [{"order": 1, "title": "Check oil level", "required": True}]},
+    )
+    assert res.status_code == 200
+    body = res.json()
+    assert body["version"] == version + 1
+    assert body["checklist"][0]["title"] == "Check oil level"

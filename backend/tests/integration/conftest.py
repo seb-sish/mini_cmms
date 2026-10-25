@@ -14,21 +14,58 @@ from sqlalchemy.pool import NullPool
 TEST_DB_DSN = os.getenv("TEST_DB_DSN", "postgresql+asyncpg://test_user:test_password@127.0.0.1:5433/mini_cmms_test")
 TEST_REDIS_URL = os.getenv("TEST_REDIS_URL", "redis://127.0.0.1:6380/0")
 
+# Единственные разрешённые цели тестов: локальный loopback, выделенные порты,
+# тестовая база и отдельный индекс Redis.
+ALLOWED_TEST_DB_HOSTS = {"127.0.0.1", "localhost", "::1"}
+ALLOWED_TEST_DB_PORT = 5433
+ALLOWED_TEST_DB_NAME = "mini_cmms_test"
+ALLOWED_TEST_REDIS_HOSTS = {"127.0.0.1", "localhost", "::1"}
+ALLOWED_TEST_REDIS_PORT = 6380
+ALLOWED_TEST_REDIS_DB = 0
+
+
+def _safe_target(url: str) -> str:
+    """Представление цели без учётных данных, локальных данных и пароля."""
+    from urllib.parse import urlsplit
+
+    parts = urlsplit(url)
+    host = parts.hostname or "?"
+    port = parts.port
+    target = f"{host}:{port}" if port else host
+    if parts.path and parts.path not in ("", "/"):
+        target += parts.path
+    return target
+
 
 def validate_test_dsn(dsn: str) -> None:
-    # Ensure we never run tests against production or unexpected databases
-    if "5433" not in dsn or "mini_cmms_test" not in dsn:
+    """Проверяет разобранный DSN: только выделенная тестовая база на loopback."""
+    from urllib.parse import urlsplit
+
+    parts = urlsplit(dsn)
+    host = parts.hostname
+    port = parts.port
+    database = (parts.path or "").lstrip("/")
+    if host not in ALLOWED_TEST_DB_HOSTS or port != ALLOWED_TEST_DB_PORT or database != ALLOWED_TEST_DB_NAME:
         raise ValueError(
-            f"Unsafe test DSN detected: '{dsn}'. Integration tests only permit "
-            "the dedicated test database on port 5433 ('mini_cmms_test')."
+            "Unsafe test DSN detected: "
+            f"'{_safe_target(dsn)}'. Integration tests only permit "
+            f"{'/'.join(sorted(ALLOWED_TEST_DB_HOSTS))}:{ALLOWED_TEST_DB_PORT}/{ALLOWED_TEST_DB_NAME}."
         )
 
 
 def validate_test_redis(url: str) -> None:
-    if "6380" not in url:
+    """Проверяет разобранный URL Redis: только выделенный экземпляр на loopback."""
+    from urllib.parse import urlsplit
+
+    parts = urlsplit(url)
+    host = parts.hostname
+    port = parts.port
+    database = int((parts.path or "/0").lstrip("/") or 0)
+    if host not in ALLOWED_TEST_REDIS_HOSTS or port != ALLOWED_TEST_REDIS_PORT or database != ALLOWED_TEST_REDIS_DB:
         raise ValueError(
-            f"Unsafe test Redis URL detected: '{url}'. Integration tests only permit "
-            "the dedicated test redis on port 6380."
+            "Unsafe test Redis URL detected: "
+            f"'{_safe_target(url)}'. Integration tests only permit "
+            f"{'/'.join(sorted(ALLOWED_TEST_REDIS_HOSTS))}:{ALLOWED_TEST_REDIS_PORT}/{ALLOWED_TEST_REDIS_DB}."
         )
 
 

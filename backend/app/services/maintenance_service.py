@@ -62,6 +62,20 @@ def validate_checklist_items(checklist: list[ChecklistItemTemplate]) -> list[dic
     return cleaned
 
 
+def _checklist_content_equals(current: list[dict] | None, incoming: list[dict]) -> bool:
+    """Сравнивает шаблоны checklist по содержанию, игнорируя генерируемые id."""
+    if not current:
+        return False
+
+    def signature(items: list[dict]) -> list[tuple]:
+        return sorted(
+            (item.get("order"), item.get("title"), bool(item.get("required")))  # type: ignore[arg-type]
+            for item in items
+        )
+
+    return signature(current) == signature(incoming)
+
+
 class MaintenanceService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
@@ -283,8 +297,11 @@ class MaintenanceService:
                 has_changes = True
 
         if payload.checklist is not None:
-            plan.checklist = validate_checklist_items(payload.checklist)
-            has_changes = True
+            cleaned_checklist = validate_checklist_items(payload.checklist)
+            # Тот же состав шаблона — no-op: id, версия и updated_at не меняются.
+            if not _checklist_content_equals(plan.checklist, cleaned_checklist):
+                plan.checklist = cleaned_checklist
+                has_changes = True
 
         new_enabled = getattr(payload, "enabled", None)
         if new_enabled is None:
