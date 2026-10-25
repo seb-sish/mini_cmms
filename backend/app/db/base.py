@@ -23,6 +23,20 @@ def locked(stmt: Select[Any]) -> Select[Any]:
     return stmt.with_for_update().execution_options(populate_existing=True)
 
 
+def is_unique_violation(exc: Exception, constraint: str) -> bool:
+    """Проверяет, что исключение вызвано нарушением конкретного UNIQUE-ограничения.
+
+    Остальные ошибки не маскируются: вызывающий код должен отличать конфликт
+    уникальности от прочих сбоев целостности.
+    """
+    orig = getattr(exc, "orig", exc)
+    sqlstate = getattr(orig, "sqlstate", None) or getattr(orig, "pgcode", None)
+    if sqlstate == "23505":
+        name = getattr(orig, "constraint_name", None)
+        return name is None or name == constraint
+    return constraint in str(orig)
+
+
 async def pairing_lock(session: AsyncSession) -> None:
     """Сериализует операции согласования пар Equipment <-> Schedule <-> Plan.
 

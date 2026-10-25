@@ -1,10 +1,11 @@
 import uuid
 
 from sqlalchemy import func, select, text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import hash_password
-from app.db.base import locked
+from app.db.base import is_unique_violation, locked
 from app.db.models.user import User, UserRole, UserStatus
 from app.errors.exceptions import AppException
 from app.schemas.user import UserCreate, UserPatch
@@ -78,7 +79,19 @@ class UserService:
             role=payload.role,
             status=UserStatus.ACTIVE,
         )
-        self.session.add(user)
+        try:
+            async with self.session.begin_nested():
+                self.session.add(user)
+                await self.session.flush()
+        except IntegrityError as exc:
+            if is_unique_violation(exc, "uq_users_lower_login"):
+                raise AppException(
+                    status=409,
+                    code="LOGIN_ALREADY_EXISTS",
+                    title="Conflict",
+                    detail=f"User with login '{payload.login}' already exists.",
+                ) from exc
+            raise
         await self.session.commit()
         await self.session.refresh(user)
         return user

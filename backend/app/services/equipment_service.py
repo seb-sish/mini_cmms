@@ -3,10 +3,11 @@ import zoneinfo
 from datetime import UTC, date, datetime
 
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.db.base import locked, pairing_lock
+from app.db.base import is_unique_violation, locked, pairing_lock
 from app.db.models.equipment import Equipment, EquipmentStatus
 from app.db.models.user import User, UserRole
 from app.db.models.work_order import WorkOrder
@@ -162,8 +163,19 @@ class EquipmentService:
             commissioned_on=payload.commissioned_on,
             status=payload.status if payload.status is not None else EquipmentStatus.OPERATIONAL,
         )
-        self.session.add(eq)
-        await self.session.flush()
+        try:
+            async with self.session.begin_nested():
+                self.session.add(eq)
+                await self.session.flush()
+        except IntegrityError as exc:
+            if is_unique_violation(exc, "uq_equipment_inventory_number"):
+                raise AppException(
+                    status=409,
+                    code="EQUIPMENT_ALREADY_EXISTS",
+                    title="Conflict",
+                    detail=f"Equipment with inventory number '{payload.inventory_number}' already exists.",
+                ) from exc
+            raise
 
         from app.services.maintenance_service import MaintenanceService
 
@@ -282,7 +294,18 @@ class EquipmentService:
 
         if has_changes:
             eq.version += 1
-            await self.session.commit()
+            try:
+                await self.session.commit()
+            except IntegrityError as exc:
+                await self.session.rollback()
+                if is_unique_violation(exc, "uq_equipment_inventory_number"):
+                    raise AppException(
+                        status=409,
+                        code="EQUIPMENT_ALREADY_EXISTS",
+                        title="Conflict",
+                        detail=f"Equipment with inventory number '{payload.inventory_number}' already exists.",
+                    ) from exc
+                raise
             await self.session.refresh(eq)
 
         return eq
