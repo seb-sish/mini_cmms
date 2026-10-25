@@ -194,14 +194,17 @@ async def patch_checklist_item(
     session: AsyncSession = Depends(get_session),
     current_user: User = Depends(require_role("TECHNICIAN")),
 ):
+    comment_set = "comment" in payload.model_fields_set
+    comment_val = payload.comment if comment_set else None
     item, wo = await WorkOrderService.check_item(
         session=session,
         current_user=current_user,
         work_order_id=work_order_id,
         item_id=item_id,
         checked=payload.checked,
-        comment=payload.comment,
+        comment=comment_val,
         if_match=if_match,
+        comment_set=comment_set,
     )
     etag = f'"{wo.id}:{wo.version}"'
     response.headers["ETag"] = etag

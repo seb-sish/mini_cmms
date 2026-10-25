@@ -343,16 +343,29 @@ class WorkOrderService:
         if wo.status != WorkOrderStatus.CREATED:
             raise AppException(409, "INVALID_WORK_ORDER_STATE", "Cannot patch work order after assignment")
 
-        if payload.title is not None:
-            wo.title = payload.title
-        if payload.description is not None:
-            wo.description = payload.description
-        if payload.priority is not None:
+        has_changes = False
+        if payload.title is not None and payload.title.strip() != wo.title:
+            wo.title = payload.title.strip()
+            has_changes = True
+        if payload.description is not None and payload.description.strip() != wo.description:
+            wo.description = payload.description.strip()
+            has_changes = True
+        if payload.priority is not None and payload.priority != wo.priority:
             wo.priority = payload.priority
+            has_changes = True
 
-        wo.version += 1
-        session.add(wo)
-        await session.commit()
+        if has_changes:
+            wo.version += 1
+            wo.updated_at = datetime.now(timezone.utc)
+            event = WorkOrderEvent(
+                work_order_id=wo.id,
+                event_type=WorkOrderEventType.UPDATED,
+                actor_id=current_user.id,
+                details="Work order updated",
+            )
+            session.add(event)
+            session.add(wo)
+            await session.commit()
         return await cls.get_work_order(session, current_user, wo.id)
 
     @classmethod
@@ -472,8 +485,9 @@ class WorkOrderService:
         work_order_id: uuid.UUID,
         item_id: uuid.UUID,
         checked: bool,
-        comment: Optional[str],
-        if_match: Optional[str],
+        comment: Optional[str] = None,
+        if_match: Optional[str] = None,
+        comment_set: bool = True,
     ) -> tuple[WorkChecklistItem, WorkOrder]:
         if not if_match:
             raise AppException(428, "PRECONDITION_REQUIRED", "If-Match header is required")
@@ -496,24 +510,38 @@ class WorkOrderService:
         if not item or item.work_order_id != wo.id:
             raise AppException(404, "NOT_FOUND", "Checklist item not found")
 
-        item.checked = checked
-        item.checked_at = datetime.now(timezone.utc) if checked else None
-        if comment is not None:
-            item.comment = comment
+        has_changes = False
 
-        wo.version += 1
-        event = WorkOrderEvent(
-            work_order_id=wo.id,
-            event_type=WorkOrderEventType.CHECKLIST_ITEM_UPDATED,
-            actor_id=current_user.id,
-            details=f"Item {item.id} checked={checked}",
-        )
-        session.add(item)
-        session.add(event)
-        session.add(wo)
-        await session.commit()
-        await session.refresh(item)
-        await session.refresh(wo)
+        if item.checked != checked:
+            has_changes = True
+            item.checked = checked
+            if checked:
+                item.checked_at = datetime.now(timezone.utc)
+            else:
+                item.checked_at = None
+
+        if comment_set:
+            clean_comment = comment.strip() if (comment is not None and comment.strip()) else (comment if comment == "" else None)
+            if item.comment != clean_comment:
+                item.comment = clean_comment
+                has_changes = True
+
+        if has_changes:
+            wo.version += 1
+            wo.updated_at = datetime.now(timezone.utc)
+            event = WorkOrderEvent(
+                work_order_id=wo.id,
+                event_type=WorkOrderEventType.CHECKLIST_ITEM_UPDATED,
+                actor_id=current_user.id,
+                details=f"Item {item.id} checked={checked}",
+            )
+            session.add(item)
+            session.add(event)
+            session.add(wo)
+            await session.commit()
+            await session.refresh(item)
+            await session.refresh(wo)
+
         return item, wo
 
     @classmethod

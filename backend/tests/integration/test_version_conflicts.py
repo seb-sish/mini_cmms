@@ -9,6 +9,7 @@ from app.core.security import hash_password
 from app.db.models.equipment import Equipment, EquipmentStatus
 from app.db.models.fault import Fault, FaultSeverity, FaultStatus
 from app.db.models.maintenance_plan import MaintenancePlan, PlanScope
+from app.db.models.maintenance_schedule import MaintenanceSchedule
 from app.db.models.user import User, UserRole, UserStatus
 from app.db.models.work_order import WorkOrder, WorkOrderPriority, WorkOrderStatus, WorkOrderType
 from app.errors.exceptions import AppException
@@ -527,3 +528,137 @@ async def test_automatic_fault_status_transition_increments_fault_version(
         f = (await s.execute(select(Fault).where(Fault.id == fault_id))).scalar_one()
         assert f.status == FaultStatus.RESOLVED
         assert f.version == 3, f"Fault version must increment on transition to RESOLVED, got {f.version}"
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_concurrent_checklist_patch_version_race(session_factory: async_sessionmaker[AsyncSession]):
+    from app.db.models.work_order import WorkChecklistItem
+    from app.services.equipment_service import get_company_today
+
+    today = get_company_today()
+    eq_id = uuid.uuid4()
+    eng_id = uuid.uuid4()
+    tech_id = uuid.uuid4()
+    plan_id = uuid.uuid4()
+    sched_id = uuid.uuid4()
+    wo_id = uuid.uuid4()
+    item_id = uuid.uuid4()
+
+    async with session_factory() as s:
+        eng = User(
+            id=eng_id,
+            login="eng_chk_race", full_name="eng_chk_race",
+            password_hash=hash_password("Password123!"),
+            role=UserRole.ENGINEER,
+            status=UserStatus.ACTIVE,
+            version=1,
+        )
+        tech = User(
+            id=tech_id,
+            login="tech_chk_race", full_name="tech_chk_race",
+            password_hash=hash_password("Password123!"),
+            role=UserRole.TECHNICIAN,
+            status=UserStatus.ACTIVE,
+            version=1,
+        )
+        eq = Equipment(
+            id=eq_id,
+            name="Fan Conc",
+            inventory_number="FAN-CONC-01",
+            category="FANS",
+            location="Room 2",
+            commissioned_on=date(2025, 1, 1),
+            status=EquipmentStatus.OPERATIONAL,
+            version=1,
+        )
+        plan = MaintenancePlan(
+            id=plan_id,
+            name="Fan Conc Plan",
+            scope=PlanScope.EQUIPMENT,
+            equipment_id=eq_id,
+            interval_days=30,
+            first_due_on=today,
+            is_active=True,
+        )
+        sched = MaintenanceSchedule(
+            id=sched_id,
+            plan_id=plan_id,
+            equipment_id=eq_id,
+            next_due_on=today,
+            is_active=True,
+        )
+        wo = WorkOrder(
+            id=wo_id,
+            number=f"WO-CHK-{uuid.uuid4().hex[:4]}",
+            type=WorkOrderType.PLANNED,
+            status=WorkOrderStatus.IN_PROGRESS,
+            title="Check vibration",
+            description="Inspect fan",
+            priority=WorkOrderPriority.NORMAL,
+            equipment_id=eq_id,
+            schedule_id=sched_id,
+            author_id=eng_id,
+            assignee_id=tech_id,
+            version=1,
+        )
+        item = WorkChecklistItem(
+            id=item_id,
+            work_order_id=wo_id,
+            title="Check vibration",
+            order=1,
+            required=True,
+            checked=False,
+            comment=None,
+        )
+        s.add_all([eng, tech, eq, plan, sched, wo, item])
+        await s.commit()
+
+    barrier_entered = asyncio.Event()
+    barrier_proceed = asyncio.Event()
+
+    async def writer_a():
+        async with session_factory() as s_a:
+            tech_a = (await s_a.execute(select(User).where(User.id == tech_id))).scalar_one()
+            stmt = select(WorkOrder).where(WorkOrder.id == wo_id).with_for_update()
+            (await s_a.execute(stmt)).scalar_one()
+            barrier_entered.set()
+            await asyncio.wait_for(barrier_proceed.wait(), timeout=5.0)
+            return await WorkOrderService.check_item(
+                s_a,
+                current_user=tech_a,
+                work_order_id=wo_id,
+                item_id=item_id,
+                checked=True,
+                comment="Comment from A",
+                if_match=f"\"{wo_id}:1\"",
+            )
+
+    async def writer_b():
+        await asyncio.wait_for(barrier_entered.wait(), timeout=5.0)
+        async with session_factory() as s_b:
+            tech_b = (await s_b.execute(select(User).where(User.id == tech_id))).scalar_one()
+            barrier_proceed.set()
+            return await WorkOrderService.check_item(
+                s_b,
+                current_user=tech_b,
+                work_order_id=wo_id,
+                item_id=item_id,
+                checked=True,
+                comment="Comment from B",
+                if_match=f"\"{wo_id}:1\"",
+            )
+
+    results = await asyncio.gather(writer_a(), writer_b(), return_exceptions=True)
+    successes = [r for r in results if isinstance(r, tuple)]
+    conflicts = [r for r in results if isinstance(r, AppException) and r.status == 412]
+
+    assert len(successes) == 1, f"Expected 1 success, got {len(successes)}: {results}"
+    assert len(conflicts) == 1, f"Expected 1 412 conflict, got {len(conflicts)}: {results}"
+
+    async with session_factory() as s:
+        final_wo = await s.get(WorkOrder, wo_id)
+        assert final_wo.version == 2
+        final_item = await s.get(WorkChecklistItem, item_id)
+        assert final_item.checked is True
+        assert final_item.comment == "Comment from A"
