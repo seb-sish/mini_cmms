@@ -131,13 +131,14 @@ class EquipmentService:
             status=EquipmentStatus.OPERATIONAL,
         )
         self.session.add(eq)
-        await self.session.commit()
-        await self.session.refresh(eq)
+        await self.session.flush()
 
         from app.services.maintenance_service import MaintenanceService
         m_service = MaintenanceService(self.session)
-        await m_service.generate_schedules_for_new_equipment(eq)
+        await m_service.sync_equipment_schedules(eq)
 
+        await self.session.commit()
+        await self.session.refresh(eq)
         return eq
 
     async def update_equipment(
@@ -190,7 +191,7 @@ class EquipmentService:
 
         old_category = eq.category
         if payload.category is not None and payload.category.strip() != eq.category:
-            from app.db.models.work_order import WorkOrder, WorkOrderStatus
+            from app.db.models.work_order import WorkOrder, WorkOrderStatus, WorkOrderType
             uncompleted = [
                 WorkOrderStatus.CREATED,
                 WorkOrderStatus.ASSIGNED,
@@ -199,18 +200,22 @@ class EquipmentService:
             ]
             wo_stmt = select(func.count(WorkOrder.id)).where(
                 WorkOrder.equipment_id == equipment_id,
+                WorkOrder.type == WorkOrderType.PLANNED,
                 WorkOrder.status.in_(uncompleted),
             )
             if ((await self.session.execute(wo_stmt)).scalar() or 0) > 0:
                 raise AppException(
                     status=409,
-                    code="ACTIVE_WORK_ORDERS",
-                    title="Conflict",
-                    detail="Cannot change equipment category with uncompleted work orders.",
+                    code="ACTIVE_MAINTENANCE_WORK",
+                    title="Active Maintenance Work",
+                    detail="Cannot change equipment category with active planned work orders.",
                 )
 
             eq.category = payload.category.strip()
             has_changes = True
+
+            from app.services.maintenance_service import MaintenanceService
+            await MaintenanceService(self.session).sync_equipment_schedules(eq)
 
         if has_changes:
             eq.version += 1
@@ -248,14 +253,13 @@ class EquipmentService:
                 detail="Cannot archive equipment with uncompleted work orders.",
             )
 
-        from app.db.models.maintenance_schedule import MaintenanceSchedule
-        sched_stmt = select(MaintenanceSchedule).where(MaintenanceSchedule.equipment_id == equipment_id)
-        scheds = (await self.session.execute(sched_stmt)).scalars().all()
-        for s in scheds:
-            s.is_active = False
-
         eq.archived_at = datetime.now(timezone.utc)
         eq.version += 1
+        self.session.add(eq)
+
+        from app.services.maintenance_service import MaintenanceService
+        await MaintenanceService(self.session).sync_equipment_schedules(eq)
+
         await self.session.commit()
         await self.session.refresh(eq)
         return eq
@@ -270,18 +274,14 @@ class EquipmentService:
                 detail="Equipment is not archived.",
             )
 
-        from app.db.models.maintenance_plan import MaintenancePlan
-        from app.db.models.maintenance_schedule import MaintenanceSchedule
-        sched_stmt = select(MaintenanceSchedule).where(MaintenanceSchedule.equipment_id == equipment_id)
-        scheds = (await self.session.execute(sched_stmt)).scalars().all()
-        for s in scheds:
-            plan = await self.session.get(MaintenancePlan, s.plan_id)
-            if plan and plan.is_active:
-                s.is_active = True
-
         eq.archived_at = None
         eq.status = EquipmentStatus.OUT_OF_SERVICE
         eq.version += 1
+        self.session.add(eq)
+
+        from app.services.maintenance_service import MaintenanceService
+        await MaintenanceService(self.session).sync_equipment_schedules(eq)
+
         await self.session.commit()
         await self.session.refresh(eq)
         return eq

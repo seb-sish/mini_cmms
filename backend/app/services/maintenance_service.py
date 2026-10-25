@@ -1,7 +1,7 @@
 from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 import uuid
-from sqlalchemy import func, select, update
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.equipment import Equipment
@@ -35,14 +35,14 @@ def validate_checklist_items(checklist: list[ChecklistItemTemplate]) -> list[dic
                 title="Validation Error",
                 detail="Checklist item title cannot be empty.",
             )
-        if norm_title.lower() in seen_titles:
+        if norm_title in seen_titles:
             raise AppException(
                 status=422,
                 code="VALIDATION_ERROR",
                 title="Validation Error",
                 detail=f"Checklist item title '{item_title}' is duplicated.",
             )
-        seen_titles.add(norm_title.lower())
+        seen_titles.add(norm_title)
         raw_id = getattr(item, 'id', None)
         item_id = str(raw_id) if raw_id else str(uuid.uuid4())
         is_req = getattr(item, 'required', None)
@@ -136,8 +136,67 @@ class MaintenanceService:
 
         return plan
 
-    async def create_plan(self, payload: MaintenancePlanCreate) -> MaintenancePlan:
+    async def sync_equipment_schedules(self, equipment: Equipment) -> None:
+        """
+        Synchronizes all schedules for a given equipment across all relevant plans
+        without performing internal commit (callers commit their own transaction).
+        - Preserves existing schedule ID and next_due_on.
+        - Sets is_active = (plan.is_active and equipment not archived and in scope).
+        - Creates missing schedules for matching plans.
+        """
         company_today = get_company_today()
+
+        sched_plan_subq = (
+            select(MaintenanceSchedule.plan_id)
+            .where(MaintenanceSchedule.equipment_id == equipment.id)
+            .scalar_subquery()
+        )
+        matching_plans_q = select(MaintenancePlan).where(
+            or_(
+                (MaintenancePlan.scope == PlanScope.CATEGORY) & (MaintenancePlan.category == equipment.category),
+                (MaintenancePlan.scope == PlanScope.EQUIPMENT) & (MaintenancePlan.equipment_id == equipment.id),
+                MaintenancePlan.id.in_(sched_plan_subq),
+            )
+        )
+        plans = (await self.session.execute(matching_plans_q)).scalars().all()
+
+        existing_sched_q = select(MaintenanceSchedule).where(MaintenanceSchedule.equipment_id == equipment.id)
+        existing_scheds = {s.plan_id: s for s in (await self.session.execute(existing_sched_q)).scalars().all()}
+
+        for plan in plans:
+            in_scope = False
+            if plan.scope == PlanScope.EQUIPMENT and plan.equipment_id == equipment.id:
+                in_scope = True
+            elif plan.scope == PlanScope.CATEGORY and plan.category == equipment.category:
+                in_scope = True
+
+            should_be_active = bool(plan.is_active and (equipment.archived_at is None) and in_scope)
+
+            if plan.id in existing_scheds:
+                sched = existing_scheds[plan.id]
+                if sched.is_active != should_be_active:
+                    sched.is_active = should_be_active
+                    sched.version += 1
+                    self.session.add(sched)
+            else:
+                if in_scope:
+                    initial_due = max(plan.first_due_on, company_today)
+                    sched = MaintenanceSchedule(
+                        id=uuid.uuid4(),
+                        plan_id=plan.id,
+                        equipment_id=equipment.id,
+                        next_due_on=initial_due,
+                        last_completed_on=None,
+                        is_active=should_be_active,
+                        version=1,
+                    )
+                    self.session.add(sched)
+
+    async def generate_schedules_for_new_equipment(self, eq: Equipment) -> None:
+        await self.sync_equipment_schedules(eq)
+        await self.session.commit()
+
+    async def create_plan(self, payload: MaintenancePlanCreate) -> MaintenancePlan:
         cleaned_checklist = validate_checklist_items(payload.checklist)
 
         enabled = getattr(payload, 'enabled', None)
@@ -161,8 +220,6 @@ class MaintenanceService:
         self.session.add(plan)
         await self.session.flush()
 
-        initial_due = max(payload.first_due_on, company_today)
-
         if payload.scope == PlanScope.EQUIPMENT:
             eq = (await self.session.execute(select(Equipment).where(Equipment.id == payload.equipment_id))).scalar_one_or_none()
             if eq is None or eq.archived_at is not None:
@@ -172,53 +229,18 @@ class MaintenanceService:
                     title="Equipment Not Found",
                     detail="Target equipment does not exist or is archived.",
                 )
-            sched = MaintenanceSchedule(
-                plan_id=plan.id,
-                equipment_id=eq.id,
-                next_due_on=initial_due,
-                last_completed_on=None,
-                is_active=enabled,
-            )
-            self.session.add(sched)
+            await self.sync_equipment_schedules(eq)
         elif payload.scope == PlanScope.CATEGORY:
             eq_stmt = select(Equipment).where(
-                Equipment.category == payload.category.strip(),
-                Equipment.archived_at.is_(None),
-            )
+                Equipment.category == payload.category.strip()
+            ).order_by(Equipment.id)
             equipments = (await self.session.execute(eq_stmt)).scalars().all()
             for eq in equipments:
-                sched = MaintenanceSchedule(
-                    plan_id=plan.id,
-                    equipment_id=eq.id,
-                    next_due_on=initial_due,
-                    last_completed_on=None,
-                    is_active=enabled,
-                )
-                self.session.add(sched)
+                await self.sync_equipment_schedules(eq)
 
         await self.session.commit()
         await self.session.refresh(plan)
         return plan
-
-    async def generate_schedules_for_new_equipment(self, eq: Equipment) -> None:
-        company_today = get_company_today()
-        plans_q = select(MaintenancePlan).where(
-            MaintenancePlan.scope == PlanScope.CATEGORY,
-            MaintenancePlan.category == eq.category,
-            MaintenancePlan.is_active == True,
-        )
-        plans = (await self.session.execute(plans_q)).scalars().all()
-        for plan in plans:
-            initial_due = max(plan.first_due_on, company_today)
-            sched = MaintenanceSchedule(
-                plan_id=plan.id,
-                equipment_id=eq.id,
-                next_due_on=initial_due,
-                last_completed_on=None,
-                is_active=True,
-            )
-            self.session.add(sched)
-        await self.session.commit()
 
     async def update_plan(self, plan_id: uuid.UUID, expected_version: int, payload: MaintenancePlanUpdate) -> MaintenancePlan:
         await self.get_plan_by_id(plan_id)
@@ -261,12 +283,23 @@ class MaintenanceService:
         if new_enabled is not None and new_enabled != plan.is_active:
             plan.is_active = new_enabled
             has_changes = True
-            # Update all attached schedules
-            await self.session.execute(
-                update(MaintenanceSchedule)
+
+            # Sync schedules for all associated equipment
+            sched_eq_subq = (
+                select(MaintenanceSchedule.equipment_id)
                 .where(MaintenanceSchedule.plan_id == plan.id)
-                .values(is_active=new_enabled)
+                .scalar_subquery()
             )
+            eq_ids_q = select(Equipment).where(
+                or_(
+                    Equipment.category == plan.category,
+                    Equipment.id == plan.equipment_id,
+                    Equipment.id.in_(sched_eq_subq),
+                )
+            ).order_by(Equipment.id)
+            equipments = (await self.session.execute(eq_ids_q)).scalars().all()
+            for eq in equipments:
+                await self.sync_equipment_schedules(eq)
 
         if payload.interval_days is not None and payload.interval_days != plan.interval_days:
             # Check Q16: Cannot change interval if there are active work orders for this plan
