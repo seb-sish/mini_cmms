@@ -4,9 +4,10 @@ from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import hash_password
+from app.db.base import locked
 from app.db.models.user import User, UserRole, UserStatus
 from app.errors.exceptions import AppException
-from app.schemas.user import PasswordUpdate, StatusUpdate, UserCreate, UserPatch
+from app.schemas.user import UserCreate, UserPatch
 from app.services.auth_service import AuthService
 
 
@@ -90,7 +91,7 @@ class UserService:
             if conn.dialect.name == "postgresql":
                 await self.session.execute(text("SELECT pg_advisory_xact_lock(84729104)"))
 
-        stmt = select(User).where(User.id == user_id).with_for_update()
+        stmt = locked(select(User).where(User.id == user_id))
         res = await self.session.execute(stmt)
         user = res.scalar_one_or_none()
         if user is None:
@@ -184,43 +185,5 @@ class UserService:
             user.version += 1
             await self.session.commit()
             await self.session.refresh(user)
-
-        return user
-
-    async def update_password(self, user_id: uuid.UUID, payload: PasswordUpdate) -> None:
-        user = await self.get_user_by_id(user_id)
-        user.password_hash = hash_password(payload.password)
-        user.version += 1
-        await self.session.commit()
-
-        if self.auth_service:
-            await self.auth_service.revoke_all_user_sessions(user_id, commit=False)
-
-    async def update_status(self, user_id: uuid.UUID, payload: StatusUpdate) -> User:
-        user = await self.get_user_by_id(user_id)
-
-        # Check last active admin rule
-        if user.role == UserRole.ADMIN and user.status == UserStatus.ACTIVE and payload.status == UserStatus.BLOCKED:
-            count_stmt = select(func.count(User.id)).where(
-                User.role == UserRole.ADMIN,
-                User.status == UserStatus.ACTIVE,
-                User.id != user_id,
-            )
-            other_active_admins = (await self.session.execute(count_stmt)).scalar_one()
-            if other_active_admins == 0:
-                raise AppException(
-                    status=409,
-                    code="LAST_ACTIVE_ADMIN",
-                    title="Conflict",
-                    detail="Cannot block or demote the last active administrator.",
-                )
-
-        user.status = payload.status
-        user.version += 1
-        await self.session.commit()
-        await self.session.refresh(user)
-
-        if payload.status == UserStatus.BLOCKED and self.auth_service:
-            await self.auth_service.revoke_all_user_sessions(user_id, commit=False)
 
         return user

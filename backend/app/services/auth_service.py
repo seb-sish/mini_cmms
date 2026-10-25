@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.core.rate_limiter import acquire_rate_limit_locks, check_rate_limit, record_failed_attempt
 from app.core.security import create_opaque_token, verify_password
+from app.db.base import locked
 from app.db.models.session import UserSession
 from app.db.models.user import User, UserStatus
 from app.errors.exceptions import AppException
@@ -47,12 +48,7 @@ class AuthService:
                 )
 
             # Lookup user with row lock to serialize against concurrent status/password changes
-            stmt = (
-                select(User)
-                .where(func.lower(User.login) == norm_login)
-                .with_for_update()
-                .execution_options(populate_existing=True)
-            )
+            stmt = locked(select(User).where(func.lower(User.login) == norm_login))
             result = await self.session.execute(stmt)
             user: User | None = result.scalar_one_or_none()
 

@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.config import settings
+from app.db.base import locked
 from app.db.models.equipment import Equipment
 from app.db.models.fault import Fault, FaultStatus
 from app.db.models.maintenance_plan import MaintenancePlan
@@ -82,7 +83,7 @@ class WorkOrderService:
                 raise AppException(409, "EQUIPMENT_ARCHIVED", "Equipment is archived")
 
             if data.fault_id is not None:
-                fault_stmt = select(Fault).where(Fault.id == data.fault_id).with_for_update()
+                fault_stmt = locked(select(Fault).where(Fault.id == data.fault_id))
                 fault = (await session.execute(fault_stmt)).scalar_one_or_none()
                 if not fault:
                     raise AppException(404, "NOT_FOUND", "Fault not found")
@@ -122,17 +123,17 @@ class WorkOrderService:
             plan_id = sched_pre[0]
 
             # Canonical lock order: Plan -> Equipment -> Schedule
-            plan_stmt = select(MaintenancePlan).where(MaintenancePlan.id == plan_id).with_for_update()
+            plan_stmt = locked(select(MaintenancePlan).where(MaintenancePlan.id == plan_id))
             plan = (await session.execute(plan_stmt)).scalar_one_or_none()
 
-            eq_stmt = select(Equipment).where(Equipment.id == data.equipment_id).with_for_update()
+            eq_stmt = locked(select(Equipment).where(Equipment.id == data.equipment_id))
             equipment = (await session.execute(eq_stmt)).scalar_one_or_none()
             if not equipment:
                 raise AppException(404, "NOT_FOUND", "Equipment not found")
             if equipment.archived_at is not None:
                 raise AppException(409, "EQUIPMENT_ARCHIVED", "Equipment is archived")
 
-            sched_stmt = select(MaintenanceSchedule).where(MaintenanceSchedule.id == data.schedule_id).with_for_update()
+            sched_stmt = locked(select(MaintenanceSchedule).where(MaintenanceSchedule.id == data.schedule_id))
             schedule = (await session.execute(sched_stmt)).scalar_one_or_none()
 
             if not plan or not plan.is_active or not schedule or not schedule.is_active:
@@ -312,14 +313,13 @@ class WorkOrderService:
 
     @classmethod
     async def get_work_order_for_update(cls, session: AsyncSession, work_order_id: uuid.UUID) -> WorkOrder:
-        query = (
+        query = locked(
             select(WorkOrder)
             .options(
                 selectinload(WorkOrder.checklist),
                 selectinload(WorkOrder.events),
             )
             .where(WorkOrder.id == work_order_id)
-            .with_for_update()
         )
         wo = (await session.execute(query)).scalars().first()
         if not wo:
@@ -454,7 +454,7 @@ class WorkOrderService:
         wo.version += 1
 
         if wo.fault_id:
-            fault_stmt = select(Fault).where(Fault.id == wo.fault_id).with_for_update()
+            fault_stmt = locked(select(Fault).where(Fault.id == wo.fault_id))
             fault = (await session.execute(fault_stmt)).scalar_one_or_none()
             if fault and fault.status == FaultStatus.OPEN:
                 fault.status = FaultStatus.IN_PROGRESS
@@ -562,7 +562,7 @@ class WorkOrderService:
         wo.cancellation_reason = reason
 
         if wo.fault_id:
-            fault_stmt = select(Fault).where(Fault.id == wo.fault_id).with_for_update()
+            fault_stmt = locked(select(Fault).where(Fault.id == wo.fault_id))
             fault = (await session.execute(fault_stmt)).scalar_one_or_none()
             if fault and fault.status == FaultStatus.IN_PROGRESS:
                 fault.status = FaultStatus.OPEN
@@ -660,19 +660,15 @@ class WorkOrderService:
                 await session.execute(select(MaintenanceSchedule.plan_id).where(MaintenanceSchedule.id == schedule_id))
             ).first()
             if sched_meta and sched_meta[0]:
-                await session.execute(
-                    select(MaintenancePlan).where(MaintenancePlan.id == sched_meta[0]).with_for_update()
-                )
+                await session.execute(locked(select(MaintenancePlan).where(MaintenancePlan.id == sched_meta[0])))
             if equipment_id:
-                await session.execute(select(Equipment).where(Equipment.id == equipment_id).with_for_update())
-            await session.execute(
-                select(MaintenanceSchedule).where(MaintenanceSchedule.id == schedule_id).with_for_update()
-            )
+                await session.execute(locked(select(Equipment).where(Equipment.id == equipment_id)))
+            await session.execute(locked(select(MaintenanceSchedule).where(MaintenanceSchedule.id == schedule_id)))
         elif wo_type == WorkOrderType.REPAIR:
             if equipment_id:
-                await session.execute(select(Equipment).where(Equipment.id == equipment_id).with_for_update())
+                await session.execute(locked(select(Equipment).where(Equipment.id == equipment_id)))
             if fault_id:
-                await session.execute(select(Fault).where(Fault.id == fault_id).with_for_update())
+                await session.execute(locked(select(Fault).where(Fault.id == fault_id)))
 
         wo = await cls.get_work_order_for_update(session, work_order_id)
         if wo.status != WorkOrderStatus.COMPLETED:
@@ -685,7 +681,7 @@ class WorkOrderService:
         wo.version += 1
 
         if wo.fault_id:
-            fault_stmt = select(Fault).where(Fault.id == wo.fault_id).with_for_update()
+            fault_stmt = locked(select(Fault).where(Fault.id == wo.fault_id))
             fault = (await session.execute(fault_stmt)).scalar_one_or_none()
             if fault and fault.status != FaultStatus.RESOLVED:
                 fault.status = FaultStatus.RESOLVED

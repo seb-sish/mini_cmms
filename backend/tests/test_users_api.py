@@ -91,9 +91,27 @@ async def test_create_duplicate_user_returns_409_login_already_exists(async_clie
 @pytest.mark.asyncio
 async def test_cannot_demote_or_block_last_admin(async_client: AsyncClient, admin_auth):
     admin_user, token = admin_auth
-    headers = {"Authorization": f"Bearer {token}"}
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "If-Match": f'"{admin_user.id}:{admin_user.version}"',
+    }
 
     # Attempt to block sole active admin
-    res = await async_client.post(f"/api/v1/users/{admin_user.id}/status", headers=headers, json={"status": "BLOCKED"})
+    res = await async_client.patch(f"/api/v1/users/{admin_user.id}", headers=headers, json={"status": "BLOCKED"})
     assert res.status_code == 409
     assert res.json()["code"] == "LAST_ACTIVE_ADMIN"
+
+
+@pytest.mark.asyncio
+async def test_legacy_user_routes_are_absent(async_client: AsyncClient, admin_auth):
+    """Legacy /password и /status не предусмотрены контрактом и обходили инварианты."""
+    admin_user, token = admin_auth
+    headers = {"Authorization": f"Bearer {token}"}
+
+    res = await async_client.post(
+        f"/api/v1/users/{admin_user.id}/password", headers=headers, json={"password": "Password123!"}
+    )
+    assert res.status_code == 404
+
+    res = await async_client.post(f"/api/v1/users/{admin_user.id}/status", headers=headers, json={"status": "BLOCKED"})
+    assert res.status_code == 404

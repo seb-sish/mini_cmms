@@ -9,7 +9,7 @@ from app.api.dependencies import get_redis, parse_if_match_version, require_role
 from app.db.models.user import User, UserRole, UserStatus
 from app.db.session import get_session
 from app.schemas.common import PaginatedResponse
-from app.schemas.user import PasswordUpdate, StatusUpdate, UserCreate, UserPatch, UserRead
+from app.schemas.user import UserCreate, UserPatch, UserRead
 from app.services.auth_service import AuthService
 from app.services.user_service import UserService
 
@@ -77,35 +77,5 @@ async def update_user(
     auth_service = AuthService(db, redis_client)
     service = UserService(db, auth_service)
     user = await service.update_user(user_id, expected_version, payload)
-    response.headers["ETag"] = f'"{user.id}:{user.version}"'
-    return UserRead.model_validate(user)
-
-
-@users_router.post("/{user_id}/password", status_code=status.HTTP_204_NO_CONTENT)
-async def update_password(
-    user_id: uuid.UUID,
-    payload: PasswordUpdate,
-    db: Annotated[AsyncSession, Depends(get_session)],
-    redis_client: Annotated[aioredis.Redis, Depends(get_redis)],
-    admin_user: Annotated[User, Depends(require_role("ADMIN"))],
-) -> Response:
-    auth_service = AuthService(db, redis_client)
-    service = UserService(db, auth_service)
-    await service.update_password(user_id, payload)
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
-
-
-@users_router.post("/{user_id}/status", response_model=UserRead)
-async def update_status(
-    user_id: uuid.UUID,
-    payload: StatusUpdate,
-    response: Response,
-    db: Annotated[AsyncSession, Depends(get_session)],
-    redis_client: Annotated[aioredis.Redis, Depends(get_redis)],
-    admin_user: Annotated[User, Depends(require_role("ADMIN"))],
-) -> UserRead:
-    auth_service = AuthService(db, redis_client)
-    service = UserService(db, auth_service)
-    user = await service.update_status(user_id, payload)
     response.headers["ETag"] = f'"{user.id}:{user.version}"'
     return UserRead.model_validate(user)

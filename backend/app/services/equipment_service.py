@@ -6,6 +6,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
+from app.db.base import locked
 from app.db.models.equipment import Equipment, EquipmentStatus
 from app.db.models.user import User, UserRole
 from app.errors.exceptions import AppException
@@ -155,7 +156,7 @@ class EquipmentService:
         current_user: User,
     ) -> Equipment:
         await self.get_equipment_by_id(equipment_id, current_user)
-        stmt = select(Equipment).where(Equipment.id == equipment_id).with_for_update()
+        stmt = locked(select(Equipment).where(Equipment.id == equipment_id))
         res = await self.session.execute(stmt)
         eq = res.scalar_one_or_none()
         if eq is None:

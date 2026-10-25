@@ -228,3 +228,68 @@ async def test_login_interleaved_with_password_reset(
         assert isinstance(res_login, AppException)
         assert res_login.status == 401
         assert res_login.code == "INVALID_CREDENTIALS"
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_self_patch_rejects_stale_version_when_user_already_loaded(
+    session_factory: async_sessionmaker[AsyncSession],
+):
+    """
+    PATCH собственного пользователя: объект уже загружен при аутентификации,
+    поэтому блокирующий SELECT обязан обновить его из строки (populate_existing).
+    Иначе проверка version проходит по устаревшим данным и правка затирает чужое изменение.
+    """
+    admin_id = uuid.uuid4()
+    other_admin_id = uuid.uuid4()
+    async with session_factory() as s:
+        s.add(
+            User(
+                id=admin_id,
+                login="self_patch_admin",
+                full_name="Self Patch Admin",
+                password_hash=hash_password("Password123!"),
+                role=UserRole.ADMIN,
+                status=UserStatus.ACTIVE,
+                version=1,
+            )
+        )
+        s.add(
+            User(
+                id=other_admin_id,
+                login="self_patch_admin_two",
+                full_name="Self Patch Admin Two",
+                password_hash=hash_password("Password123!"),
+                role=UserRole.ADMIN,
+                status=UserStatus.ACTIVE,
+                version=1,
+            )
+        )
+        await s.commit()
+
+    # Сессия A: пользователь уже загружен (как при аутентификации запроса).
+    async with session_factory() as a:
+        loaded = (await a.execute(select(User).where(User.id == admin_id))).scalar_one()
+        assert loaded.version == 1
+
+        # Сессия B: параллельное изменение того же пользователя.
+        async with session_factory() as b:
+            other = (await b.execute(select(User).where(User.id == admin_id))).scalar_one()
+            other.role = UserRole.ENGINEER
+            other.version += 1
+            await b.commit()
+
+        # Сессия A продолжает работу с устаревшим ETag версии 1.
+        with pytest.raises(AppException) as exc:
+            await UserService(a).update_user(
+                admin_id,
+                expected_version=1,
+                payload=UserPatch(role=UserRole.TECHNICIAN),
+            )
+        assert exc.value.status == 412
+        assert exc.value.code == "VERSION_CONFLICT"
+
+    async with session_factory() as s:
+        stored = (await s.execute(select(User).where(User.id == admin_id))).scalar_one()
+        assert stored.role == UserRole.ENGINEER, "Правка с устаревшим ETag не должна затирать чужое изменение"
+        assert stored.version == 2

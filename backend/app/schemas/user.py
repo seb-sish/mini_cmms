@@ -54,16 +54,6 @@ class UserPatch(BaseModel):
 UserUpdate = UserPatch
 
 
-class PasswordUpdate(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    password: str = Field(min_length=12, max_length=128)
-
-
-class StatusUpdate(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    status: UserStatus
-
-
 class UserRead(BaseModel):
     model_config = ConfigDict(from_attributes=True, extra="forbid")
 

@@ -2,9 +2,19 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import DateTime, Integer
+from sqlalchemy import DateTime, Integer, Select
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+
+
+def locked(stmt: Select[Any]) -> Select[Any]:
+    """SELECT ... FOR UPDATE, обновляющий уже загруженный объект в identity map.
+
+    Без populate_existing ORM отдаёт ранее загруженный (устаревший) объект:
+    проверка version проходит по устаревшим данным, и параллельный PATCH
+    затирает чужое изменение вместо ответа 412.
+    """
+    return stmt.with_for_update().execution_options(populate_existing=True)
 
 
 class Base(DeclarativeBase):

@@ -4,6 +4,7 @@ from datetime import date, timedelta
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.db.base import locked
 from app.db.models.equipment import Equipment
 from app.db.models.maintenance_plan import MaintenancePlan, PlanScope
 from app.db.models.maintenance_schedule import MaintenanceSchedule
@@ -250,7 +251,7 @@ class MaintenanceService:
         self, plan_id: uuid.UUID, expected_version: int, payload: MaintenancePlanUpdate
     ) -> MaintenancePlan:
         await self.get_plan_by_id(plan_id)
-        stmt = select(MaintenancePlan).where(MaintenancePlan.id == plan_id).with_for_update()
+        stmt = locked(select(MaintenancePlan).where(MaintenancePlan.id == plan_id))
         res = await self.session.execute(stmt)
         plan = res.scalar_one_or_none()
         if plan is None:
@@ -311,18 +312,17 @@ class MaintenanceService:
 
         if payload.interval_days is not None and payload.interval_days != plan.interval_days:
             # Lock schedules and affected equipments in canonical hierarchy: Plan -> Equipment -> Schedule
-            sched_stmt = (
+            sched_stmt = locked(
                 select(MaintenanceSchedule)
                 .where(MaintenanceSchedule.plan_id == plan.id)
                 .order_by(MaintenanceSchedule.id)
-                .with_for_update()
             )
             schedules = (await self.session.execute(sched_stmt)).scalars().all()
 
             eq_ids = sorted(list({s.equipment_id for s in schedules}))
             if eq_ids:
                 await self.session.execute(
-                    select(Equipment).where(Equipment.id.in_(eq_ids)).order_by(Equipment.id).with_for_update()
+                    locked(select(Equipment).where(Equipment.id.in_(eq_ids)).order_by(Equipment.id))
                 )
 
             # Check Q16: Cannot change interval if there are active work orders for this plan

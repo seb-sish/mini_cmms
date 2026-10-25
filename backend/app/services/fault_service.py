@@ -4,6 +4,7 @@ from datetime import date
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.db.base import locked
 from app.db.models.equipment import Equipment
 from app.db.models.fault import Fault, FaultSeverity, FaultStatus
 from app.db.models.user import User, UserRole
@@ -178,7 +179,7 @@ class FaultService:
         current_user: User,
     ) -> Fault:
         await self.get_fault_by_id(fault_id, current_user)
-        stmt = select(Fault).where(Fault.id == fault_id).with_for_update()
+        stmt = locked(select(Fault).where(Fault.id == fault_id))
         res = await self.session.execute(stmt)
         fault = res.scalar_one_or_none()
         if fault is None:
