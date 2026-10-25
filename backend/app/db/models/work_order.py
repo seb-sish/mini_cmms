@@ -2,7 +2,7 @@ from datetime import date, datetime
 from enum import StrEnum
 from typing import Optional
 import uuid
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Index, Integer, JSON, String, Text
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Index, Integer, JSON, String, Text, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base, TimestampMixin, UUIDPrimaryKeyMixin, VersionMixin
@@ -105,6 +105,20 @@ class WorkOrder(Base, UUIDPrimaryKeyMixin, TimestampMixin, VersionMixin):
         Index("ix_work_orders_schedule_id", schedule_id),
         Index("ix_work_orders_assignee_id", assignee_id),
         Index("ix_work_orders_created_at", "created_at"),
+        Index(
+            "uq_work_orders_active_fault",
+            "fault_id",
+            unique=True,
+            postgresql_where=text("fault_id IS NOT NULL AND status IN ('CREATED', 'ASSIGNED', 'IN_PROGRESS', 'COMPLETED')"),
+            sqlite_where=text("fault_id IS NOT NULL AND status IN ('CREATED', 'ASSIGNED', 'IN_PROGRESS', 'COMPLETED')"),
+        ),
+        Index(
+            "uq_work_orders_active_schedule",
+            "schedule_id",
+            unique=True,
+            postgresql_where=text("schedule_id IS NOT NULL AND status IN ('CREATED', 'ASSIGNED', 'IN_PROGRESS', 'COMPLETED')"),
+            sqlite_where=text("schedule_id IS NOT NULL AND status IN ('CREATED', 'ASSIGNED', 'IN_PROGRESS', 'COMPLETED')"),
+        ),
     )
 
 class WorkChecklistItem(Base, UUIDPrimaryKeyMixin):

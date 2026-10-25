@@ -206,7 +206,12 @@ class FaultService:
         from app.db.models.work_order import WorkOrder, WorkOrderStatus
         active_wo_stmt = select(func.count(WorkOrder.id)).where(
             WorkOrder.fault_id == fault.id,
-            WorkOrder.status.in_([WorkOrderStatus.CREATED, WorkOrderStatus.ASSIGNED, WorkOrderStatus.IN_PROGRESS]),
+            WorkOrder.status.in_([
+                WorkOrderStatus.CREATED,
+                WorkOrderStatus.ASSIGNED,
+                WorkOrderStatus.IN_PROGRESS,
+                WorkOrderStatus.COMPLETED,
+            ]),
         )
         has_active_wo = ((await self.session.execute(active_wo_stmt)).scalar() or 0) > 0
         if has_active_wo:

@@ -5,6 +5,7 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 import uuid
 from sqlalchemy import case, func, or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -67,24 +68,29 @@ class WorkOrderService:
         elif current_user.role != UserRole.ENGINEER:
             raise AppException(403, "ACCESS_DENIED", "Insufficient permissions to create work order")
 
-        equipment = await session.get(Equipment, data.equipment_id)
-        if not equipment:
-            raise AppException(404, "NOT_FOUND", "Equipment not found")
-        if equipment.archived_at is not None:
-            raise AppException(409, "EQUIPMENT_ARCHIVED", "Equipment is archived")
-
         planned_due_on = None
         checklist_templates = []
+        equipment = None
 
         if data.type == WorkOrderType.REPAIR:
             if data.schedule_id is not None:
                 raise AppException(422, "VALIDATION_ERROR", "schedule_id forbidden for REPAIR")
+
+            equipment = await session.get(Equipment, data.equipment_id)
+            if not equipment:
+                raise AppException(404, "NOT_FOUND", "Equipment not found")
+            if equipment.archived_at is not None:
+                raise AppException(409, "EQUIPMENT_ARCHIVED", "Equipment is archived")
+
             if data.fault_id is not None:
-                fault = await session.get(Fault, data.fault_id)
+                fault_stmt = select(Fault).where(Fault.id == data.fault_id).with_for_update()
+                fault = (await session.execute(fault_stmt)).scalar_one_or_none()
                 if not fault:
                     raise AppException(404, "NOT_FOUND", "Fault not found")
                 if fault.equipment_id != equipment.id:
                     raise AppException(422, "EQUIPMENT_MISMATCH", "Fault does not match equipment")
+                if fault.status == FaultStatus.RESOLVED:
+                    raise AppException(409, "FAULT_ALREADY_RESOLVED", "Cannot create repair work order for resolved fault")
 
                 dup_q = select(WorkOrder).where(
                     WorkOrder.fault_id == fault.id,
@@ -94,25 +100,42 @@ class WorkOrderService:
                 if existing:
                     raise AppException(409, "DUPLICATE_ACTIVE_WORK_ORDER", "Active work order exists for this fault")
 
-                if fault.status == FaultStatus.OPEN:
-                    fault.status = FaultStatus.IN_PROGRESS
-                    fault.version += 1
-                    session.add(fault)
-
         elif data.type == WorkOrderType.PLANNED:
             if data.schedule_id is None:
                 raise AppException(422, "VALIDATION_ERROR", "schedule_id required for PLANNED")
             if data.fault_id is not None:
                 raise AppException(422, "VALIDATION_ERROR", "fault_id forbidden for PLANNED")
 
-            schedule = await session.get(MaintenanceSchedule, data.schedule_id)
-            if not schedule:
+            sched_pre = (await session.execute(
+                select(MaintenanceSchedule.plan_id, MaintenanceSchedule.equipment_id)
+                .where(MaintenanceSchedule.id == data.schedule_id)
+            )).first()
+            if not sched_pre:
                 raise AppException(404, "NOT_FOUND", "Maintenance schedule not found")
-            if schedule.equipment_id != equipment.id:
+            if sched_pre[1] != data.equipment_id:
                 raise AppException(422, "EQUIPMENT_MISMATCH", "Schedule does not match equipment")
 
-            plan = await session.get(MaintenancePlan, schedule.plan_id)
-            if not plan or not plan.is_active or not schedule.is_active:
+            plan_id = sched_pre[0]
+
+            # Canonical lock order: Plan -> Equipment -> Schedule
+            plan_stmt = select(MaintenancePlan).where(MaintenancePlan.id == plan_id).with_for_update()
+            plan = (await session.execute(plan_stmt)).scalar_one_or_none()
+
+            eq_stmt = select(Equipment).where(Equipment.id == data.equipment_id).with_for_update()
+            equipment = (await session.execute(eq_stmt)).scalar_one_or_none()
+            if not equipment:
+                raise AppException(404, "NOT_FOUND", "Equipment not found")
+            if equipment.archived_at is not None:
+                raise AppException(409, "EQUIPMENT_ARCHIVED", "Equipment is archived")
+
+            sched_stmt = (
+                select(MaintenanceSchedule)
+                .where(MaintenanceSchedule.id == data.schedule_id)
+                .with_for_update()
+            )
+            schedule = (await session.execute(sched_stmt)).scalar_one_or_none()
+
+            if not plan or not plan.is_active or not schedule or not schedule.is_active:
                 raise AppException(409, "INACTIVE_MAINTENANCE_SCHEDULE", "Schedule or plan is inactive")
 
             dup_q = select(WorkOrder).where(
@@ -164,7 +187,17 @@ class WorkOrderService:
         )
         session.add(event)
 
-        await session.commit()
+        try:
+            await session.commit()
+        except IntegrityError as exc:
+            await session.rollback()
+            err_msg = str(exc.orig) if hasattr(exc, "orig") else str(exc)
+            if "uq_work_orders_active_fault" in err_msg:
+                raise AppException(409, "DUPLICATE_ACTIVE_WORK_ORDER", "Active work order exists for this fault")
+            if "uq_work_orders_active_schedule" in err_msg:
+                raise AppException(409, "DUPLICATE_PLANNED_WORK_ORDER", "Active planned work order exists for this schedule")
+            raise
+
         return await cls.get_work_order(session, current_user, wo.id)
 
     @classmethod
@@ -204,8 +237,6 @@ class WorkOrderService:
             conditions.append(WorkOrder.fault_id == fault_id)
         if schedule_id:
             conditions.append(WorkOrder.schedule_id == schedule_id)
-        if current_user.role == UserRole.OPERATOR:
-            conditions.append(WorkOrder.author_id == current_user.id)
 
         if q and q.strip():
             clean_q = q.strip()
@@ -219,10 +250,13 @@ class WorkOrderService:
                 )
             )
 
-        count_q = select(func.count(WorkOrder.id))
+        if current_user.role == UserRole.OPERATOR:
+            conditions.append(WorkOrder.author_id == current_user.id)
+
+        count_query = select(func.count(WorkOrder.id))
         if conditions:
-            count_q = count_q.where(*conditions)
-        total = (await session.execute(count_q)).scalar() or 0
+            count_query = count_query.where(*conditions)
+        total = (await session.execute(count_query)).scalar() or 0
 
         query = (
             select(WorkOrder)
@@ -409,6 +443,14 @@ class WorkOrderService:
         wo.started_at = datetime.now(timezone.utc)
         wo.version += 1
 
+        if wo.fault_id:
+            fault_stmt = select(Fault).where(Fault.id == wo.fault_id).with_for_update()
+            fault = (await session.execute(fault_stmt)).scalar_one_or_none()
+            if fault and fault.status == FaultStatus.OPEN:
+                fault.status = FaultStatus.IN_PROGRESS
+                fault.version += 1
+                session.add(fault)
+
         event = WorkOrderEvent(
             work_order_id=wo.id,
             event_type=WorkOrderEventType.STARTED,
@@ -493,7 +535,8 @@ class WorkOrderService:
         wo.cancellation_reason = reason
 
         if wo.fault_id:
-            fault = await session.get(Fault, wo.fault_id)
+            fault_stmt = select(Fault).where(Fault.id == wo.fault_id).with_for_update()
+            fault = (await session.execute(fault_stmt)).scalar_one_or_none()
             if fault and fault.status == FaultStatus.IN_PROGRESS:
                 fault.status = FaultStatus.OPEN
                 fault.version += 1
@@ -585,7 +628,8 @@ class WorkOrderService:
         wo.version += 1
 
         if wo.fault_id:
-            fault = await session.get(Fault, wo.fault_id)
+            fault_stmt = select(Fault).where(Fault.id == wo.fault_id).with_for_update()
+            fault = (await session.execute(fault_stmt)).scalar_one_or_none()
             if fault and fault.status != FaultStatus.RESOLVED:
                 fault.status = FaultStatus.RESOLVED
                 fault.version += 1

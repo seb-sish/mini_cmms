@@ -471,7 +471,7 @@ async def test_automatic_fault_status_transition_increments_fault_version(
         s.add_all([eng, tech, eq, fault])
         await s.commit()
 
-    # 1. Create REPAIR work order linked to fault -> fault transitions OPEN -> IN_PROGRESS, version increments
+    # 1. Create REPAIR work order linked to fault -> fault status remains OPEN, version remains 1
     async with session_factory() as s:
         eng = (await s.execute(select(User).where(User.id == eng_id))).scalar_one()
         from app.schemas.work_order import WorkOrderCreate
@@ -491,10 +491,10 @@ async def test_automatic_fault_status_transition_increments_fault_version(
 
     async with session_factory() as s:
         f = (await s.execute(select(Fault).where(Fault.id == fault_id))).scalar_one()
-        assert f.status == FaultStatus.IN_PROGRESS
-        assert f.version == 2, f"Fault version must increment on transition to IN_PROGRESS, got {f.version}"
+        assert f.status == FaultStatus.OPEN
+        assert f.version == 1, f"Fault version must remain 1 after REPAIR creation, got {f.version}"
 
-    # 2. Assign and start work order
+    # 2. Assign and start work order -> fault transitions to IN_PROGRESS, version increments to 2
     async with session_factory() as s:
         eng = (await s.execute(select(User).where(User.id == eng_id))).scalar_one()
         await WorkOrderService.assign_work_order(s, eng, wo_id, tech_id)
@@ -503,7 +503,12 @@ async def test_automatic_fault_status_transition_increments_fault_version(
         tech = (await s.execute(select(User).where(User.id == tech_id))).scalar_one()
         await WorkOrderService.start_work_order(s, tech, wo_id)
 
-    # 3. Complete and close work order -> fault transitions to RESOLVED, version increments
+    async with session_factory() as s:
+        f = (await s.execute(select(Fault).where(Fault.id == fault_id))).scalar_one()
+        assert f.status == FaultStatus.IN_PROGRESS
+        assert f.version == 2, f"Fault version must increment on transition to IN_PROGRESS, got {f.version}"
+
+    # 3. Complete and close work order -> fault transitions to RESOLVED, version increments to 3
     async with session_factory() as s:
         tech = (await s.execute(select(User).where(User.id == tech_id))).scalar_one()
         await WorkOrderService.complete_work_order(
