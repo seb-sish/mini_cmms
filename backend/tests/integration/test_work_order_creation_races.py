@@ -8,6 +8,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.security import hash_password
+from app.db.base import pairing_lock
 from app.db.models.equipment import Equipment, EquipmentStatus
 from app.db.models.fault import Fault, FaultSeverity, FaultStatus
 from app.db.models.maintenance_plan import MaintenancePlan, PlanScope
@@ -178,7 +179,8 @@ async def test_concurrent_planned_work_orders_same_schedule_race(session_factory
     async def create_first():
         async with session_factory() as s_a:
             eng_a = (await s_a.execute(select(User).where(User.id == eng_id))).scalar_one()
-            # Блокировка в каноническом порядке: Equipment -> Schedule -> Plan.
+            # Блокировка в каноническом порядке: advisory (согласование пар) -> Equipment.
+            await pairing_lock(s_a)
             stmt = select(Equipment).where(Equipment.id == eq_id).with_for_update()
             (await s_a.execute(stmt)).scalar_one()
             barrier_entered.set()

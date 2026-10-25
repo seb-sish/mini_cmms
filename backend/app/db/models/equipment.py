@@ -16,10 +16,10 @@ class EquipmentStatus(StrEnum):
 class Equipment(Base, UUIDPrimaryKeyMixin, TimestampMixin, VersionMixin):
     __tablename__ = "equipment"
 
-    name: Mapped[str] = mapped_column(String(100), nullable=False)
-    inventory_number: Mapped[str] = mapped_column(String(50), nullable=False)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    inventory_number: Mapped[str] = mapped_column(String(64), nullable=False)
     category: Mapped[str] = mapped_column(String(100), nullable=False)
-    location: Mapped[str] = mapped_column(String(100), nullable=False)
+    location: Mapped[str] = mapped_column(String(200), nullable=False)
     status: Mapped[str] = mapped_column(String(20), default=EquipmentStatus.OPERATIONAL, nullable=False)
     commissioned_on: Mapped[date] = mapped_column(Date, nullable=False)
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

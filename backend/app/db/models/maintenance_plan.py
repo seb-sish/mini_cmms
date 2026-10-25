@@ -21,7 +21,7 @@ class PlanScope(StrEnum):
 class MaintenancePlan(Base, UUIDPrimaryKeyMixin, TimestampMixin, VersionMixin):
     __tablename__ = "maintenance_plans"
 
-    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     scope: Mapped[str] = mapped_column(String(20), nullable=False)
     equipment_id: Mapped[uuid.UUID | None] = mapped_column(

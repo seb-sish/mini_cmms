@@ -25,7 +25,7 @@ class UserStatus(StrEnum):
 class User(Base, UUIDPrimaryKeyMixin, TimestampMixin, VersionMixin):
     __tablename__ = "users"
 
-    login: Mapped[str] = mapped_column(String(50), nullable=False)
+    login: Mapped[str] = mapped_column(String(64), nullable=False)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     full_name: Mapped[str | None] = mapped_column(String(100), nullable=True, default=None)
     role: Mapped[str] = mapped_column(String(20), default=UserRole.OPERATOR, nullable=False)
