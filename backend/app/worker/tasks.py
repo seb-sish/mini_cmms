@@ -1,5 +1,6 @@
 from datetime import date, datetime, timezone
 from typing import Any
+import uuid
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -11,6 +12,24 @@ from app.db.models.notification import Notification, NotificationType
 from app.db.models.user import User, UserRole, UserStatus
 from app.db.models.work_order import WorkOrder, WorkOrderStatus
 from app.services.equipment_service import get_company_today
+
+
+def _get_insert_class(session: AsyncSession):
+    dialect_name = getattr(getattr(session, "bind", None), "dialect", None)
+    name = dialect_name.name if dialect_name else ""
+    if not name and hasattr(session, "get_bind"):
+        try:
+            bind = session.get_bind()
+            if bind and hasattr(bind, "dialect"):
+                name = bind.dialect.name
+        except Exception:
+            pass
+    if name == "sqlite":
+        from sqlalchemy.dialects.sqlite import insert as dialect_insert
+    else:
+        from sqlalchemy.dialects.postgresql import insert as dialect_insert
+    return dialect_insert
+
 
 async def generate_maintenance_notifications(ctx: dict[str, Any]) -> int:
     session: AsyncSession = ctx.get("session")
@@ -89,30 +108,29 @@ async def generate_maintenance_notifications(ctx: dict[str, Any]) -> int:
             if assigned_tech and assigned_tech.id not in [r.id for r in recipients]:
                 recipients.append(assigned_tech)
 
+            insert_fn = _get_insert_class(session)
+            now = datetime.now(timezone.utc)
             for recipient in recipients:
-                # Idempotency check: (schedule_id, planned_due_on, type, recipient_id)
-                check_q = select(Notification.id).where(
-                    Notification.schedule_id == sched.id,
-                    Notification.planned_due_on == sched.next_due_on,
-                    Notification.type == notif_type,
-                    Notification.recipient_id == recipient.id,
+                stmt = (
+                    insert_fn(Notification)
+                    .values(
+                        id=uuid.uuid4(),
+                        recipient_id=recipient.id,
+                        plan_id=sched.plan_id,
+                        schedule_id=sched.id,
+                        equipment_id=sched.equipment_id,
+                        planned_due_on=sched.next_due_on,
+                        type=notif_type,
+                        message=message,
+                        created_at=now,
+                    )
+                    .on_conflict_do_nothing(
+                        index_elements=["schedule_id", "planned_due_on", "type", "recipient_id"]
+                    )
                 )
-                existing = (await session.execute(check_q)).first()
-                if existing:
-                    continue
-
-                notif = Notification(
-                    recipient_id=recipient.id,
-                    plan_id=sched.plan_id,
-                    schedule_id=sched.id,
-                    equipment_id=sched.equipment_id,
-                    planned_due_on=sched.next_due_on,
-                    type=notif_type,
-                    message=message,
-                    created_at=datetime.now(timezone.utc),
-                )
-                session.add(notif)
-                created_count += 1
+                res = await session.execute(stmt)
+                if res.rowcount and res.rowcount > 0:
+                    created_count += res.rowcount
 
         if created_count > 0:
             await session.commit()
