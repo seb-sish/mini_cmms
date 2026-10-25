@@ -13,7 +13,7 @@ services:
       - DB_DSN=postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}@postgres:5432/${POSTGRES_DB:-mini_cmms}
       - REDIS_URL=redis://redis:6379/0
       - APP_COMPANY_TIMEZONE=${APP_COMPANY_TIMEZONE:-Europe/Moscow}
-      - APP_CORS_ORIGINS=${APP_CORS_ORIGINS:-*}
+      - APP_CORS_ORIGINS=${APP_CORS_ORIGINS:?APP_CORS_ORIGINS must be set}
       - SECURITY_TOKEN_EXPIRE_HOURS=${SECURITY_TOKEN_EXPIRE_HOURS:-12}
       - SECURITY_RATE_LIMIT_MAX_ATTEMPTS=${SECURITY_RATE_LIMIT_MAX_ATTEMPTS:-5}
       - SECURITY_RATE_LIMIT_WINDOW_SECONDS=${SECURITY_RATE_LIMIT_WINDOW_SECONDS:-600}
@@ -38,7 +38,7 @@ services:
       - DB_DSN=postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}@postgres:5432/${POSTGRES_DB:-mini_cmms}
       - APP_COMPANY_TIMEZONE=${APP_COMPANY_TIMEZONE:-Europe/Moscow}
     command: >
-      bash -c "uv run alembic upgrade head"
+      bash -c "/app/.venv/bin/alembic upgrade head"
     depends_on:
       postgres:
         condition: service_healthy
@@ -56,11 +56,11 @@ services:
       - DB_DSN=postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}@postgres:5432/${POSTGRES_DB:-mini_cmms}
       - REDIS_URL=redis://redis:6379/0
       - APP_COMPANY_TIMEZONE=${APP_COMPANY_TIMEZONE:-Europe/Moscow}
-      - APP_CORS_ORIGINS=${APP_CORS_ORIGINS:-*}
+      - APP_CORS_ORIGINS=${APP_CORS_ORIGINS:?APP_CORS_ORIGINS must be set}
       - SECURITY_RATE_LIMIT_MAX_ATTEMPTS=${SECURITY_RATE_LIMIT_MAX_ATTEMPTS:-5}
       - SECURITY_RATE_LIMIT_WINDOW_SECONDS=${SECURITY_RATE_LIMIT_WINDOW_SECONDS:-600}
     command: >
-      uv run arq app.worker.main.WorkerSettings
+      /app/.venv/bin/arq app.worker.main.WorkerSettings
     depends_on:
       postgres:
         condition: service_healthy
