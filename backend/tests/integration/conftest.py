@@ -93,12 +93,12 @@ async def apply_test_migrations() -> None:
         try:
             await asyncio.to_thread(command.upgrade, alembic_cfg, "head")
             _migrations_applied = True
-        except Exception as exc:
+        except Exception:
             raise RuntimeError(
-                f"Failed to apply migrations to test database {TEST_DB_DSN}. "
+                f"Failed to apply migrations to test database {_safe_target(TEST_DB_DSN)}. "
                 "Make sure the test infrastructure is running via: "
                 "`docker compose -p mini_cmms_test -f compose.test.yml up -d --wait`"
-            ) from exc
+            ) from None
 
 
 @pytest_asyncio.fixture
@@ -143,12 +143,12 @@ async def real_redis() -> AsyncIterator[aioredis.Redis]:
     r = aioredis.from_url(TEST_REDIS_URL)
     try:
         await r.ping()
-    except Exception as exc:
+    except Exception:
         raise RuntimeError(
-            f"Failed to connect to test Redis at {TEST_REDIS_URL}. "
+            f"Failed to connect to test Redis at {_safe_target(TEST_REDIS_URL)}. "
             "Make sure the test infrastructure is running via: "
             "`docker compose -p mini_cmms_test -f compose.test.yml up -d --wait`"
-        ) from exc
+        ) from None
     await r.flushdb()
     yield r
     await r.flushdb()

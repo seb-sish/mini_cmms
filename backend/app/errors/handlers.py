@@ -99,12 +99,8 @@ def register_error_handlers(app: FastAPI) -> None:
     async def content_type_and_protocol_middleware(request: Request, call_next):
         if request.method in ("POST", "PUT", "PATCH"):
             content_type = request.headers.get("content-type")
-            unsupported = bool(
-                content_type
-                and not (
-                    content_type.startswith("application/json") or content_type.startswith("application/problem+json")
-                )
-            )
+            media_type = (content_type or "").partition(";")[0].strip().lower()
+            unsupported = bool(content_type and media_type != "application/json")
             malformed = False
             if not unsupported:
                 # Тело разбирается до зависимостей аутентификации, поэтому некорректный

@@ -59,6 +59,43 @@ async def test_unsupported_media_type_for_authenticated_request(async_client: As
     assert res.json()["code"] == "UNSUPPORTED_MEDIA_TYPE"
 
 
+@pytest.mark.parametrize("content_type", ["Application/JSON", "application/json; charset=utf-8"])
+async def test_json_media_type_is_case_insensitive(async_client: AsyncClient, db_session: AsyncSession, content_type):
+    import json
+
+    _, token = await _engineer(db_session)
+    response = await async_client.post(
+        "/api/v1/equipment",
+        headers={"Authorization": f"Bearer {token}", "Content-Type": content_type},
+        content=json.dumps(
+            {
+                "name": "Media type machine",
+                "inventory_number": "EQ-MEDIA-1",
+                "category": "Machines",
+                "location": "Workshop",
+                "commissioned_on": "2025-01-01",
+                "status": "OPERATIONAL",
+            }
+        ),
+    )
+    assert response.status_code == 201, response.text
+    assert response.json()["inventory_number"] == "EQ-MEDIA-1"
+
+
+@pytest.mark.parametrize("content_type", ["application/jsonp", "application/problem+json", "application/json-seq"])
+async def test_json_prefix_does_not_allow_unsupported_media_type(
+    async_client: AsyncClient, db_session: AsyncSession, content_type
+):
+    _, token = await _engineer(db_session)
+    response = await async_client.post(
+        "/api/v1/equipment",
+        content=b"{}",
+        headers={"Authorization": f"Bearer {token}", "Content-Type": content_type},
+    )
+    assert response.status_code == 415, response.text
+    assert response.json()["code"] == "UNSUPPORTED_MEDIA_TYPE"
+
+
 @pytest.mark.asyncio
 async def test_malformed_json_is_reported_after_authentication(async_client: AsyncClient):
     res = await async_client.post(

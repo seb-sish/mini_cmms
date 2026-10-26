@@ -69,7 +69,13 @@ class WorkOrderService:
         смена роли получает ту же блокировку, поэтому назначение либо увидит
         новую роль, либо смена роли увидит новое назначение.
         """
-        stmt = locked(select(User).where(User.id == assignee_id))
+        # NO KEY UPDATE сохраняет защиту роли и не блокирует FK событий на прежнего исполнителя.
+        stmt = (
+            select(User)
+            .where(User.id == assignee_id)
+            .with_for_update(key_share=True)
+            .execution_options(populate_existing=True)
+        )
         tech = (await session.execute(stmt)).scalar_one_or_none()
         if tech is None:
             raise AppException(404, "NOT_FOUND", "Assignee not found")
@@ -679,6 +685,9 @@ class WorkOrderService:
         if not meta:
             raise AppException(404, "NOT_FOUND", "Work order not found")
         wo_type, schedule_id, fault_id, equipment_id = meta
+
+        if wo_type == WorkOrderType.PLANNED:
+            await pairing_lock(session)
 
         # Канонический порядок блокировок: Equipment -> WorkOrder -> Fault -> Schedule -> Plan.
         if equipment_id:

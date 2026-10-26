@@ -189,6 +189,8 @@ class EquipmentService:
         payload: EquipmentPatch,
         current_user: User,
     ) -> Equipment:
+        if payload.category is not None:
+            await pairing_lock(self.session)
         await self.get_equipment_by_id(equipment_id, current_user)
         stmt = locked(select(Equipment).where(Equipment.id == equipment_id))
         res = await self.session.execute(stmt)
