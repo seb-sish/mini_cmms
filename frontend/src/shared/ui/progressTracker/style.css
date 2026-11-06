@@ -1,0 +1,68 @@
+.progress-tracker {
+    display: flex;
+    list-style: none;
+}
+
+.progress-tracker-step {
+    position: relative;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--ds-space-050);
+    min-width: 0;
+    text-align: center;
+}
+
+.progress-tracker-step + .progress-tracker-step::before {
+    content: "";
+    position: absolute;
+    top: 9px;
+    right: calc(50% + 14px);
+    left: calc(-50% + 14px);
+    height: 2px;
+    background-color: var(--ds-border);
+}
+
+.progress-tracker-step.done + .progress-tracker-step::before,
+.progress-tracker-step.done + .progress-tracker-step.current::before {
+    background-color: var(--ds-background-brand-bold);
+}
+
+.progress-tracker-marker {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    border-radius: var(--ds-border-radius-circle);
+    border: 2px solid var(--ds-border-bold);
+    background-color: var(--ds-surface);
+    color: var(--ds-text-inverse);
+}
+
+.progress-tracker-step.done .progress-tracker-marker {
+    border-color: var(--ds-background-brand-bold);
+    background-color: var(--ds-background-brand-bold);
+}
+
+.progress-tracker-step.current .progress-tracker-marker {
+    border-color: var(--ds-background-brand-bold);
+    box-shadow: inset 0 0 0 3px var(--ds-surface), inset 0 0 0 10px var(--ds-background-brand-bold);
+}
+
+.progress-tracker-label {
+    color: var(--ds-text-subtlest);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+}
+
+.progress-tracker-step.done .progress-tracker-label,
+.progress-tracker-step.current .progress-tracker-label {
+    color: var(--ds-text);
+}
+
+.progress-tracker-step.current .progress-tracker-label {
+    font-weight: var(--ds-font-weight-semibold);
+}

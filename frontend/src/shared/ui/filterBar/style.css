@@ -1,0 +1,7 @@
+.filter-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: var(--ds-space-150);
+    margin-bottom: var(--ds-space-200);
+}

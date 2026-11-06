@@ -1,0 +1,15 @@
+.form-modal-form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--ds-space-200);
+}
+
+.form-modal-required {
+    color: var(--ds-text-danger);
+}
+
+.form-modal-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: var(--ds-space-200);
+}

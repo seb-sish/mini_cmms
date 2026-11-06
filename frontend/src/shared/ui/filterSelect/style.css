@@ -1,0 +1,16 @@
+.filter-select {
+    display: flex;
+    flex-direction: column;
+    gap: var(--ds-space-025);
+    min-width: 150px;
+}
+
+.filter-select-label {
+    font-weight: var(--ds-font-weight-semibold);
+    color: var(--ds-text-subtle);
+}
+
+.filter-select.active .form-control {
+    border-color: var(--ds-border-selected);
+    background-color: var(--ds-background-selected);
+}

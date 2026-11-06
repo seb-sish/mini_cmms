@@ -1,0 +1,74 @@
+.form-field {
+    display: flex;
+    flex-direction: column;
+    gap: var(--ds-space-050);
+    min-width: 0;
+}
+
+.form-field-label {
+    font-size: var(--ds-font-size-body-small);
+    line-height: var(--ds-line-height-body-small);
+    font-weight: var(--ds-font-weight-semibold);
+    color: var(--ds-text-subtle);
+}
+
+.form-field-required {
+    color: var(--ds-text-danger);
+}
+
+.form-field-error {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--ds-space-050);
+    color: var(--ds-text-danger);
+}
+
+.form-field-error .icon {
+    margin-top: 1px;
+    width: 14px;
+    height: 14px;
+}
+
+.form-field-helper {
+    color: var(--ds-text-subtlest);
+}
+
+.form-control {
+    width: 100%;
+    min-height: var(--ds-control-height);
+    padding: var(--ds-space-075) var(--ds-space-100);
+    border: var(--ds-border-width) solid var(--ds-border-input);
+    border-radius: var(--ds-border-radius);
+    background-color: var(--ds-background-input);
+    color: var(--ds-text);
+    font-size: var(--ds-font-size-body);
+    line-height: var(--ds-line-height-body);
+    transition: background-color var(--ds-transition-fast), border-color var(--ds-transition-fast);
+}
+
+.form-control:hover {
+    background-color: var(--ds-background-input-hovered);
+}
+
+.form-control:focus {
+    outline: none;
+    border-color: var(--ds-border-focused);
+    box-shadow: inset 0 0 0 1px var(--ds-border-focused);
+    background-color: var(--ds-background-input);
+}
+
+.form-control::placeholder {
+    color: var(--ds-text-subtlest);
+}
+
+.form-control.invalid {
+    border-color: var(--ds-border-danger);
+    box-shadow: inset 0 0 0 1px var(--ds-border-danger);
+}
+
+.form-control:disabled {
+    background-color: var(--ds-background-disabled);
+    border-color: var(--ds-border-disabled);
+    color: var(--ds-text-disabled);
+    cursor: not-allowed;
+}

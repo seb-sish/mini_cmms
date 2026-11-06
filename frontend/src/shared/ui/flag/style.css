@@ -1,0 +1,71 @@
+.flag-group {
+    position: fixed;
+    left: var(--ds-space-300);
+    bottom: var(--ds-space-300);
+    z-index: var(--ds-z-index-flag);
+    display: flex;
+    flex-direction: column-reverse;
+    gap: var(--ds-space-100);
+    width: 400px;
+    max-width: calc(100vw - 48px);
+}
+
+.flag {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--ds-space-200);
+    padding: var(--ds-space-200);
+    border-radius: var(--ds-border-radius-100);
+    background-color: var(--ds-surface-overlay);
+    box-shadow: var(--ds-shadow-overlay);
+    animation: flag-enter var(--ds-transition-medium);
+}
+
+.flag-icon {
+    display: inline-flex;
+    padding-top: 2px;
+}
+
+.flag-icon .icon {
+    width: 20px;
+    height: 20px;
+}
+
+.flag.success .flag-icon {
+    color: var(--ds-icon-success);
+}
+
+.flag.error .flag-icon {
+    color: var(--ds-icon-danger);
+}
+
+.flag.warning .flag-icon {
+    color: var(--ds-icon-warning);
+}
+
+.flag.info .flag-icon {
+    color: var(--ds-icon-information);
+}
+
+.flag-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: var(--ds-space-050);
+    min-width: 0;
+}
+
+.flag-description {
+    color: var(--ds-text-subtle);
+}
+
+@keyframes flag-enter {
+    from {
+        opacity: 0;
+        transform: translateX(-16px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}

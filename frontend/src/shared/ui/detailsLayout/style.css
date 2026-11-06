@@ -1,0 +1,30 @@
+.details-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 340px;
+    gap: var(--ds-space-300);
+    align-items: start;
+}
+
+.details-layout-main,
+.details-layout-side {
+    display: flex;
+    flex-direction: column;
+    gap: var(--ds-space-200);
+    min-width: 0;
+}
+
+.details-layout-side {
+    position: sticky;
+    top: calc(var(--ds-top-nav-height) + var(--ds-space-200));
+}
+
+@media (max-width: 1100px) {
+    .details-layout {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .details-layout-side {
+        position: static;
+        order: -1;
+    }
+}

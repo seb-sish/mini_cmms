@@ -1,0 +1,28 @@
+.empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--ds-space-100);
+    padding: var(--ds-space-500) var(--ds-space-300);
+    text-align: center;
+}
+
+.empty-state-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 48px;
+    height: 48px;
+    margin-bottom: var(--ds-space-100);
+    border-radius: var(--ds-border-radius-circle);
+    background-color: var(--ds-background-neutral);
+    color: var(--ds-icon-subtle);
+}
+
+.empty-state-description {
+    max-width: 420px;
+}
+
+.empty-state-action {
+    margin-top: var(--ds-space-100);
+}

@@ -1,0 +1,19 @@
+.search-field {
+    position: relative;
+    width: 240px;
+    max-width: 100%;
+}
+
+.search-field-icon {
+    position: absolute;
+    top: 50%;
+    left: var(--ds-space-100);
+    display: inline-flex;
+    color: var(--ds-icon-subtle);
+    transform: translateY(-50%);
+    pointer-events: none;
+}
+
+.search-field-input {
+    padding-left: var(--ds-space-400);
+}

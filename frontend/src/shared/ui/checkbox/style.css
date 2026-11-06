@@ -1,0 +1,35 @@
+.checkbox {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--ds-space-100);
+}
+
+.checkbox-input {
+    flex-shrink: 0;
+    width: 16px;
+    height: 16px;
+    margin-top: 2px;
+    accent-color: var(--ds-background-brand-bold);
+    cursor: pointer;
+}
+
+.checkbox-label {
+    display: flex;
+    flex-direction: column;
+    gap: var(--ds-space-025);
+    cursor: pointer;
+}
+
+.checkbox-required {
+    color: var(--ds-text-danger);
+}
+
+.checkbox-description {
+    color: var(--ds-text-subtlest);
+}
+
+.checkbox.disabled .checkbox-label,
+.checkbox.disabled .checkbox-input {
+    color: var(--ds-text-disabled);
+    cursor: not-allowed;
+}

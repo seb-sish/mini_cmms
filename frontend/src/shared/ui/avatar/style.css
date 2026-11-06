@@ -1,0 +1,21 @@
+.avatar {
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--ds-border-radius-circle);
+    color: var(--ds-text-inverse);
+    font-weight: var(--ds-font-weight-semibold);
+}
+
+.avatar.small {
+    width: 24px;
+    height: 24px;
+    font-size: 10px;
+}
+
+.avatar.medium {
+    width: 32px;
+    height: 32px;
+    font-size: 12px;
+}

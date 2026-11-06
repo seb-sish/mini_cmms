@@ -1,0 +1,6 @@
+.query-boundary-loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--ds-space-600) 0;
+}

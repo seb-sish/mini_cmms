@@ -1,0 +1,74 @@
+.lozenge {
+    display: inline-block;
+    max-width: 200px;
+    padding: 0 var(--ds-space-050);
+    border-radius: var(--ds-border-radius);
+    font-size: var(--ds-font-size-body-xsmall);
+    line-height: var(--ds-line-height-body-small);
+    font-weight: var(--ds-font-weight-bold);
+    text-transform: uppercase;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    vertical-align: middle;
+}
+
+.lozenge.default {
+    background-color: #DCDFE4;
+    color: #44546F;
+}
+
+.lozenge.inprogress {
+    background-color: #CCE0FF;
+    color: #0055CC;
+}
+
+.lozenge.success {
+    background-color: #BAF3DB;
+    color: #216E4E;
+}
+
+.lozenge.removed {
+    background-color: #FFD5D2;
+    color: #AE2E24;
+}
+
+.lozenge.new {
+    background-color: #DFD8FD;
+    color: #5E4DB2;
+}
+
+.lozenge.moved {
+    background-color: #F8E6A0;
+    color: #7F5F01;
+}
+
+.lozenge.default.bold {
+    background-color: #44546F;
+    color: var(--ds-text-inverse);
+}
+
+.lozenge.inprogress.bold {
+    background-color: #0C66E4;
+    color: var(--ds-text-inverse);
+}
+
+.lozenge.success.bold {
+    background-color: #1F845A;
+    color: var(--ds-text-inverse);
+}
+
+.lozenge.removed.bold {
+    background-color: #C9372C;
+    color: var(--ds-text-inverse);
+}
+
+.lozenge.new.bold {
+    background-color: #6E5DC6;
+    color: var(--ds-text-inverse);
+}
+
+.lozenge.moved.bold {
+    background-color: #F5CD47;
+    color: #172B4D;
+}

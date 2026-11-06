@@ -1,0 +1,69 @@
+.section-message {
+    display: flex;
+    gap: var(--ds-space-200);
+    padding: var(--ds-space-200);
+    border-radius: var(--ds-border-radius);
+}
+
+.section-message-icon {
+    display: inline-flex;
+    padding-top: 2px;
+}
+
+.section-message-icon .icon {
+    width: 20px;
+    height: 20px;
+}
+
+.section-message-content {
+    display: flex;
+    flex-direction: column;
+    gap: var(--ds-space-100);
+    min-width: 0;
+}
+
+.section-message-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--ds-space-100);
+}
+
+.section-message.information {
+    background-color: var(--ds-background-information);
+}
+
+.section-message.information .section-message-icon {
+    color: var(--ds-icon-information);
+}
+
+.section-message.warning {
+    background-color: var(--ds-background-warning);
+}
+
+.section-message.warning .section-message-icon {
+    color: var(--ds-icon-warning);
+}
+
+.section-message.error {
+    background-color: var(--ds-background-danger);
+}
+
+.section-message.error .section-message-icon {
+    color: var(--ds-icon-danger);
+}
+
+.section-message.success {
+    background-color: var(--ds-background-success);
+}
+
+.section-message.success .section-message-icon {
+    color: var(--ds-icon-success);
+}
+
+.section-message.discovery {
+    background-color: var(--ds-background-discovery);
+}
+
+.section-message.discovery .section-message-icon {
+    color: var(--ds-icon-discovery);
+}
