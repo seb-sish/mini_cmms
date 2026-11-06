@@ -29,3 +29,12 @@ logs/
 .ruff_cache/
 
 *.cookies
+
+# Frontend dependencies and build output
+**/node_modules/
+**/.next/
+**/coverage/
+**/*.tsbuildinfo
+**/.git/
+**/.env
+**/.env.*

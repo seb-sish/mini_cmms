@@ -1,4 +1,23 @@
 services:
+  frontend:
+    container_name: mini_cmms_frontend
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_COMPANY_TIMEZONE: ${APP_COMPANY_TIMEZONE:-Europe/Moscow}
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${FRONTEND_PORT:-3000}:3000"
+    environment:
+      CMMS_API_BASE_URL: http://backend:8000
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    depends_on:
+      backend:
+        condition: service_started
+
   backend:
     container_name: mini_cmms_backend
     build:

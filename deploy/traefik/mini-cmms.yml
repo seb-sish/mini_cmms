@@ -1,0 +1,27 @@
+http:
+  routers:
+    mini-cmms-web:
+      rule: "Host(`minicmms.sneakypeeky.fun`)"
+      entryPoints:
+        - websecure
+      tls:
+        certResolver: letsencrypt
+      service: mini-cmms-web
+    mini-cmms-api:
+      rule: "Host(`api.minicmms.sneakypeeky.fun`)"
+      entryPoints:
+        - websecure
+      tls:
+        certResolver: letsencrypt
+      service: mini-cmms-api
+  services:
+    mini-cmms-web:
+      loadBalancer:
+        servers:
+          - url: "http://127.0.0.1:3000"
+        passHostHeader: true
+    mini-cmms-api:
+      loadBalancer:
+        servers:
+          - url: "http://127.0.0.1:8000"
+        passHostHeader: true
