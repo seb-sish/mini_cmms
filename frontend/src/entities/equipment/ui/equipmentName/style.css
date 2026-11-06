@@ -1,0 +1,10 @@
+.equipment-name {
+    display: inline-flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    column-gap: var(--ds-space-075);
+}
+
+.equipment-name-number {
+    color: var(--ds-text-subtlest);
+}

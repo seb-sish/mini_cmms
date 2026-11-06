@@ -1,0 +1,9 @@
+.equipment-picker {
+    display: flex;
+    flex-direction: column-reverse;
+    gap: var(--ds-space-075);
+}
+
+.equipment-picker .search-field {
+    width: 100%;
+}

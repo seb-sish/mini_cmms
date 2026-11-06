@@ -1,0 +1,22 @@
+.work-order-priority {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--ds-space-050);
+    white-space: nowrap;
+}
+
+.work-order-priority.low .icon {
+    color: #1D7AFC;
+}
+
+.work-order-priority.normal .icon {
+    color: #D97008;
+}
+
+.work-order-priority.high .icon {
+    color: #E2483D;
+}
+
+.work-order-priority.critical .icon {
+    color: #AE2E24;
+}

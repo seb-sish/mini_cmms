@@ -1,0 +1,6 @@
+.replaced-parts-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--ds-space-050);
+    list-style: none;
+}

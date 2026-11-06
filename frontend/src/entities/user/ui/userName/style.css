@@ -1,0 +1,18 @@
+.user-name {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--ds-space-075);
+    min-width: 0;
+}
+
+.user-name-unknown {
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border-radius: var(--ds-border-radius-circle);
+    background-color: var(--ds-background-neutral);
+    color: var(--ds-icon-subtle);
+}
