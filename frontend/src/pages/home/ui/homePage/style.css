@@ -1,0 +1,10 @@
+.home-page-role {
+    margin: calc(-1 * var(--ds-space-200)) 0 var(--ds-space-300);
+}
+
+.home-page-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 560px), 1fr));
+    gap: var(--ds-space-300);
+    align-items: start;
+}

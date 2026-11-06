@@ -1,0 +1,39 @@
+.login-page {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    padding: var(--ds-space-300) var(--ds-space-200);
+    background-color: var(--ds-surface-sunken);
+    background-image: linear-gradient(180deg, var(--ds-secondary) 0, var(--ds-secondary) 280px, transparent 280px);
+}
+
+.login-page-card {
+    display: flex;
+    flex-direction: column;
+    gap: var(--ds-space-300);
+    width: 100%;
+    max-width: 400px;
+    padding: var(--ds-space-400);
+    border-radius: var(--ds-border-radius-100);
+    background-color: var(--ds-surface-raised);
+    box-shadow: var(--ds-shadow-overlay);
+}
+
+.login-page-brand {
+    display: flex;
+    align-items: center;
+    gap: var(--ds-space-200);
+}
+
+.login-page-logo {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 48px;
+    height: 48px;
+    flex-shrink: 0;
+    border-radius: var(--ds-border-radius-200);
+    background-color: var(--ds-background-brand-bold);
+    color: var(--ds-text-inverse);
+}

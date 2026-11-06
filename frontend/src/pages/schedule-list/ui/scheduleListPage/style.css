@@ -1,0 +1,3 @@
+.schedule-list-hint {
+    margin: calc(-1 * var(--ds-space-150)) 0 var(--ds-space-200);
+}

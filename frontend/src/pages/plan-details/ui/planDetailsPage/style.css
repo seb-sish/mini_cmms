@@ -1,0 +1,14 @@
+.plan-details-checklist {
+    display: flex;
+    flex-direction: column;
+    gap: var(--ds-space-100);
+    padding-left: var(--ds-space-250);
+}
+
+.plan-details-checklist li {
+    padding-left: var(--ds-space-050);
+}
+
+.plan-details-checklist li > span:first-child {
+    margin-right: var(--ds-space-100);
+}
