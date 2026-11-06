@@ -27,6 +27,7 @@ from app.db.models.work_order_event import WorkOrderEvent, WorkOrderEventType
 from app.errors.handlers import AppException
 from app.schemas.work_order import WorkOrderCreate, WorkOrderPatch
 from app.services.equipment_service import get_company_today
+from app.services.notification_service import NotificationService
 
 ACTIVE_STATUSES = [
     WorkOrderStatus.CREATED,
@@ -220,7 +221,7 @@ class WorkOrderService:
             event_type=WorkOrderEventType.CREATED,
             actor_id=current_user.id,
             to_status=WorkOrderStatus.CREATED,
-            details="Work order created",
+            details="Заявка создана",
         )
         session.add(event)
 
@@ -394,7 +395,7 @@ class WorkOrderService:
                 work_order_id=wo.id,
                 event_type=WorkOrderEventType.UPDATED,
                 actor_id=current_user.id,
-                details="Work order updated",
+                details="Изменены данные заявки",
             )
             session.add(event)
             session.add(wo)
@@ -429,10 +430,12 @@ class WorkOrderService:
             from_status=WorkOrderStatus.CREATED,
             to_status=WorkOrderStatus.ASSIGNED,
             new_assignee_id=tech.id,
-            details=f"Assigned to {tech.full_name}",
+            details=f"Назначен исполнитель: {tech.login}",
         )
         session.add(event)
         session.add(wo)
+        if wo.type == WorkOrderType.PLANNED:
+            await NotificationService.generate(session, get_company_today(), schedule_id=wo.schedule_id)
         await session.commit()
         return await cls.get_work_order(session, current_user, wo.id)
 
@@ -463,10 +466,12 @@ class WorkOrderService:
             actor_id=current_user.id,
             old_assignee_id=old_assignee_id,
             new_assignee_id=tech.id,
-            details=f"Reassigned from {old_assignee_id} to {tech.full_name}",
+            details=f"Исполнитель изменён: {tech.login}",
         )
         session.add(event)
         session.add(wo)
+        if wo.type == WorkOrderType.PLANNED:
+            await NotificationService.generate(session, get_company_today(), schedule_id=wo.schedule_id)
         await session.commit()
         return await cls.get_work_order(session, current_user, wo.id)
 
@@ -500,7 +505,7 @@ class WorkOrderService:
             actor_id=current_user.id,
             from_status=WorkOrderStatus.ASSIGNED,
             to_status=WorkOrderStatus.IN_PROGRESS,
-            details="Work started",
+            details="Работа по заявке начата",
         )
         session.add(event)
         session.add(wo)
@@ -563,7 +568,8 @@ class WorkOrderService:
                 work_order_id=wo.id,
                 event_type=WorkOrderEventType.CHECKLIST_ITEM_UPDATED,
                 actor_id=current_user.id,
-                details=f"Item {item.id} checked={checked}",
+                details=f"Операция «{item.title}»: {'выполнена' if checked else 'отметка снята'}"
+                + (f". Комментарий: {item.comment}" if item.comment else ""),
             )
             session.add(item)
             session.add(event)
@@ -760,10 +766,12 @@ class WorkOrderService:
             actor_id=current_user.id,
             from_status=WorkOrderStatus.COMPLETED,
             to_status=WorkOrderStatus.CLOSED,
-            details="Work order closed",
+            details="Результат принят, заявка закрыта",
         )
         session.add(event)
         session.add(wo)
+        if wo.type == WorkOrderType.PLANNED:
+            await NotificationService.generate(session, get_company_today(), schedule_id=wo.schedule_id)
         await session.commit()
         return await cls.get_work_order(session, current_user, wo.id)
 

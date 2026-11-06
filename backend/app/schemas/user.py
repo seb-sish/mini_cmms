@@ -55,6 +55,24 @@ class UserPatch(BaseModel):
 UserUpdate = UserPatch
 
 
+class UserSummary(BaseModel):
+    model_config = ConfigDict(from_attributes=True, extra="forbid")
+
+    id: uuid.UUID
+    login: str
+    role: UserRole
+    status: UserStatus
+
+
+class UserSummaryPage(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[UserSummary]
+    total: int
+    limit: int
+    offset: int
+
+
 class UserRead(BaseModel):
     model_config = ConfigDict(from_attributes=True, extra="forbid")
 

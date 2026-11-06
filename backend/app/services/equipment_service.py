@@ -13,6 +13,7 @@ from app.db.models.user import User, UserRole
 from app.db.models.work_order import WorkOrder
 from app.errors.exceptions import AppException
 from app.schemas.equipment import EquipmentCreate, EquipmentPatch
+from app.services.notification_service import NotificationService
 
 
 def get_company_today() -> date:
@@ -178,6 +179,7 @@ class EquipmentService:
         m_service = MaintenanceService(self.session)
         await m_service.sync_equipment_schedules(eq)
 
+        await NotificationService.generate(self.session, get_company_today(), equipment_id=eq.id)
         await self.session.commit()
         await self.session.refresh(eq)
         return eq
@@ -294,6 +296,7 @@ class EquipmentService:
         if has_changes:
             eq.version += 1
             try:
+                await NotificationService.generate(self.session, get_company_today(), equipment_id=eq.id)
                 await self.session.commit()
             except IntegrityError as exc:
                 await self.session.rollback()
@@ -360,6 +363,7 @@ class EquipmentService:
 
         await MaintenanceService(self.session).sync_equipment_schedules(eq)
 
+        await NotificationService.generate(self.session, get_company_today(), equipment_id=eq.id)
         await self.session.commit()
         await self.session.refresh(eq)
         return eq
@@ -394,6 +398,7 @@ class EquipmentService:
 
         await MaintenanceService(self.session).sync_equipment_schedules(eq)
 
+        await NotificationService.generate(self.session, get_company_today(), equipment_id=eq.id)
         await self.session.commit()
         await self.session.refresh(eq)
         return eq

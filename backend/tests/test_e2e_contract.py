@@ -217,10 +217,10 @@ async def test_full_acceptance_flows(async_client: AsyncClient, db_session: Asyn
     sched_id = scheds[0]["id"]
     assert scheds[0]["next_due_on"] == str(today)
 
-    # 3.2 Run background notification task (engineers notified)
+    # 3.2 The plan has already notified engineers; the worker must not duplicate it.
     ctx = {"session": db_session}
     notif_count = await generate_maintenance_notifications(ctx)
-    assert notif_count >= 1
+    assert notif_count == 0
 
     eng_notifs = await async_client.get("/api/v1/notifications", headers=eng_headers)
     assert eng_notifs.status_code == 200
@@ -252,7 +252,7 @@ async def test_full_acceptance_flows(async_client: AsyncClient, db_session: Asyn
     )
     # Late assignment notification for technician
     tech_notif_count = await generate_maintenance_notifications(ctx)
-    assert tech_notif_count >= 1
+    assert tech_notif_count == 0
 
     tech_notifs = await async_client.get("/api/v1/notifications", headers=tech_headers)
     assert tech_notifs.status_code == 200

@@ -1,12 +1,15 @@
 import uuid
 
-from sqlalchemy import func, select, text
+from sqlalchemy import func, or_, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import hash_password
 from app.db.base import escape_like, is_unique_violation, locked
+from app.db.models.fault import Fault
 from app.db.models.user import User, UserRole, UserStatus
+from app.db.models.work_order import WorkOrder
+from app.db.models.work_order_event import WorkOrderEvent
 from app.errors.exceptions import AppException
 from app.schemas.user import UserCreate, UserPatch
 from app.services.auth_service import AuthService
@@ -59,6 +62,54 @@ class UserService:
                 detail=f"User with id '{user_id}' does not exist.",
             )
         return user
+
+    async def get_user_summary(self, user_id: uuid.UUID, viewer: User) -> User:
+        if viewer.role in (UserRole.ADMIN, UserRole.ENGINEER) or user_id == viewer.id:
+            return await self.get_user_by_id(user_id)
+
+        visible_work = (
+            WorkOrder.assignee_id == viewer.id
+            if viewer.role == UserRole.TECHNICIAN
+            else WorkOrder.author_id == viewer.id
+        )
+        participant = (
+            select(WorkOrder.id)
+            .where(
+                visible_work,
+                or_(
+                    WorkOrder.author_id == user_id,
+                    WorkOrder.assignee_id == user_id,
+                    WorkOrder.closed_by == user_id,
+                    WorkOrder.cancelled_by == user_id,
+                ),
+            )
+            .exists()
+        )
+        event_participant = (
+            select(WorkOrderEvent.id)
+            .join(WorkOrder)
+            .where(
+                visible_work,
+                or_(
+                    WorkOrderEvent.actor_id == user_id,
+                    WorkOrderEvent.old_assignee_id == user_id,
+                    WorkOrderEvent.new_assignee_id == user_id,
+                ),
+            )
+            .exists()
+        )
+        allowed = [participant, event_participant]
+        if viewer.role == UserRole.TECHNICIAN:
+            allowed.append(
+                select(Fault.id)
+                .join(WorkOrder, WorkOrder.fault_id == Fault.id)
+                .where(visible_work, Fault.author_id == user_id)
+                .exists()
+            )
+        person = (await self.session.execute(select(User).where(User.id == user_id, or_(*allowed)))).scalar_one_or_none()
+        if person is None:
+            raise AppException(404, "NOT_FOUND", "User not found")
+        return person
 
     async def create_user(self, payload: UserCreate) -> User:
         norm_login = payload.login.strip().lower()

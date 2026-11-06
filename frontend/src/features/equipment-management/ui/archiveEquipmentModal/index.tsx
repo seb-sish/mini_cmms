@@ -1,5 +1,7 @@
 "use client";
 
+import { notificationKeys } from "@entities/notification";
+
 import ConfirmModal from "@shared/ui/confirmModal";
 import { maintenanceScheduleKeys } from "@entities/maintenance-schedule";
 import { isEquipmentArchived } from "@entities/equipment";
@@ -38,6 +40,7 @@ const ArchiveEquipmentModal = ({
         equipmentKeys.detail(updatedEquipment.id),
         updatedEquipment
       );
+      queryClient.invalidateQueries({ queryKey: notificationKeys.all });
       queryClient.invalidateQueries({ queryKey: equipmentKeys.lists() });
       queryClient.invalidateQueries({ queryKey: maintenanceScheduleKeys.all });
       showFlag({

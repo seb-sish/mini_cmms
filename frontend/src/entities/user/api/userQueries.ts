@@ -3,10 +3,10 @@
 import { keepPreviousData } from "@tanstack/react-query";
 import { IUserListParams } from "../model/types";
 import { useQuery } from "@tanstack/react-query";
-import { MAX_PAGE_SIZE } from "@shared/config";
 import { fetchCurrentUser } from "./userApi";
-import { UserStatus } from "../model/types";
-import { UserRole } from "../model/types";
+import { fetchUserDirectory } from "./userApi";
+import { fetchUserSummary } from "./userApi";
+import { fetchTechnicians } from "./userApi";
 import { fetchUsers } from "./userApi";
 import { fetchUser } from "./userApi";
 
@@ -18,6 +18,8 @@ export const userKeys = {
   details: () => [...userKeys.all, "detail"] as const,
   detail: (userId: string) => [...userKeys.details(), userId] as const,
   technicians: () => [...userKeys.all, "technicians"] as const,
+  directory: () => [...userKeys.all, "directory"] as const,
+  summary: (userId: string | null) => [...userKeys.all, "summary", userId] as const,
 };
 
 export const useViewerQuery = () =>
@@ -44,16 +46,25 @@ export const useUserQuery = (userId: string) =>
 export const useTechniciansQuery = (isEnabled: boolean) =>
   useQuery({
     queryKey: userKeys.technicians(),
-    queryFn: () =>
-      fetchUsers({
-        limit: MAX_PAGE_SIZE,
-        offset: 0,
-        role: UserRole.TECHNICIAN,
-        status: UserStatus.ACTIVE,
-      }),
+    queryFn: fetchTechnicians,
     enabled: isEnabled,
     staleTime: 5 * 60_000,
     retry: false,
     refetchOnMount: false,
     refetchOnWindowFocus: false,
+  });
+
+export const useUserDirectoryQuery = (isEnabled: boolean) =>
+  useQuery({
+    queryKey: userKeys.directory(),
+    queryFn: () => fetchUserDirectory(),
+    enabled: isEnabled,
+  });
+
+export const useUserSummaryQuery = (userId: string | null, isEnabled: boolean) =>
+  useQuery({
+    queryKey: userKeys.summary(userId),
+    queryFn: () => fetchUserSummary(userId ?? ""),
+    enabled: Boolean(userId) && isEnabled,
+    retry: false,
   });

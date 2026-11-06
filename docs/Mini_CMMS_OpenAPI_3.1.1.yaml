@@ -2579,10 +2579,7 @@ paths:
       - Оборудование
       operationId: createEquipment
       summary: Создать оборудование
-      description: Только ENGINEER. Система проверяет глобальную уникальность inventory_number, включая архивные
-        карточки. Для действующих CATEGORY-регламентов формируются индивидуальные расписания. Для каждого подходящего
-        включённого CATEGORY-плана создаётся один индивидуальный график с next_due_on=max(first_due_on, local_today).
-        equipment и все графики создаются атомарно.
+      description: "Только ENGINEER. Система проверяет глобальную уникальность inventory_number, включая архивные карточки. Для действующих CATEGORY-регламентов формируются индивидуальные расписания. Для каждого подходящего включённого CATEGORY-плана создаётся один индивидуальный график с next_due_on=max(first_due_on, local_today). equipment и все графики создаются атомарно.\n\nАктуальные напоминания формируются для затронутых графиков в той же транзакции, без ожидания worker tick. Ошибка откатывает всю операцию; повторная генерация не создаёт дублей."
       requestBody:
         required: true
         description: JSON-тело запроса. Неописанные поля запрещены.
@@ -3241,16 +3238,7 @@ paths:
       - Оборудование
       operationId: updateEquipment
       summary: Редактировать оборудование
-      description: Только ENGINEER. Нельзя редактировать архивный объект (409). При смене категории будущие CATEGORY-расписания
-        пересинхронизируются; расписания с историей не удаляются. Обязателен If-Match. Сначала аутентификация, роль
-        и видимость, затем проверка валидного тела/заголовка и версии (412/428), затем бизнес-правила. Успешное
-        фактическое изменение атомарно увеличивает version и возвращает ETag; PATCH с текущими значениями возвращает
-        200 без увеличения version и без события. График для пары plan_id+equipment_id существует в единственном
-        экземпляре за всё время (UNIQUE без active). Архивирование/уход из категории приостанавливают график без
-        удаления. При возврате/restore график возобновляется, если equipment подходит и plan.enabled=true; next_due_on
-        и last_completed_on сохраняются, включая просрочку. Для впервые подключённой пары next_due_on=max(plan.first_due_on,
-        local_today), last_completed_on=null. Смена категории запрещена при незавершённых PLANNED; CLOSED/CANCELLED
-        не блокируют.
+      description: "Только ENGINEER. Нельзя редактировать архивный объект (409). При смене категории будущие CATEGORY-расписания пересинхронизируются; расписания с историей не удаляются. Обязателен If-Match. Сначала аутентификация, роль и видимость, затем проверка валидного тела/заголовка и версии (412/428), затем бизнес-правила. Успешное фактическое изменение атомарно увеличивает version и возвращает ETag; PATCH с текущими значениями возвращает 200 без увеличения version и без события. График для пары plan_id+equipment_id существует в единственном экземпляре за всё время (UNIQUE без active). Архивирование/уход из категории приостанавливают график без удаления. При возврате/restore график возобновляется, если equipment подходит и plan.enabled=true; next_due_on и last_completed_on сохраняются, включая просрочку. Для впервые подключённой пары next_due_on=max(plan.first_due_on, local_today), last_completed_on=null. Смена категории запрещена при незавершённых PLANNED; CLOSED/CANCELLED не блокируют.\n\nАктуальные напоминания формируются для затронутых графиков в той же транзакции, без ожидания worker tick. Ошибка откатывает всю операцию; повторная генерация не создаёт дублей."
       parameters:
       - name: equipment_id
         in: path
@@ -4097,16 +4085,7 @@ paths:
       - Оборудование
       operationId: restoreEquipment
       summary: Вернуть оборудование из архива
-      description: 'Проектное расширение для исправления ошибочного архивирования. ENGINEER. Категорийные графики
-        вновь активируются согласно действующим регламентам; восстановление неархивного объекта -> 409.
-
-
-        Тело запроса отсутствует; отправка лишних полей не допускается. График для пары plan_id+equipment_id существует
-        в единственном экземпляре за всё время (UNIQUE без active). Архивирование/уход из категории приостанавливают
-        график без удаления. При возврате/restore график возобновляется, если equipment подходит и plan.enabled=true;
-        next_due_on и last_completed_on сохраняются, включая просрочку. Для впервые подключённой пары next_due_on=max(plan.first_due_on,
-        local_today), last_completed_on=null. Смена категории запрещена при незавершённых PLANNED; CLOSED/CANCELLED
-        не блокируют. Непустое тело запроса, включая JSON {}, запрещено: 422 VALIDATION_ERROR.'
+      description: "Проектное расширение для исправления ошибочного архивирования. ENGINEER. Категорийные графики вновь активируются согласно действующим регламентам; восстановление неархивного объекта -> 409.\n\nТело запроса отсутствует; отправка лишних полей не допускается. График для пары plan_id+equipment_id существует в единственном экземпляре за всё время (UNIQUE без active). Архивирование/уход из категории приостанавливают график без удаления. При возврате/restore график возобновляется, если equipment подходит и plan.enabled=true; next_due_on и last_completed_on сохраняются, включая просрочку. Для впервые подключённой пары next_due_on=max(plan.first_due_on, local_today), last_completed_on=null. Смена категории запрещена при незавершённых PLANNED; CLOSED/CANCELLED не блокируют. Непустое тело запроса, включая JSON {}, запрещено: 422 VALIDATION_ERROR.\n\nАктуальные напоминания формируются для затронутых графиков в той же транзакции, без ожидания worker tick. Ошибка откатывает всю операцию; повторная генерация не создаёт дублей."
       parameters:
       - name: equipment_id
         in: path
@@ -6241,9 +6220,7 @@ paths:
       - Регламенты ТО
       operationId: createMaintenancePlan
       summary: Создать регламент ТО
-      description: Только ENGINEER. Scope EQUIPMENT требует equipment_id без category; CATEGORY требует category
-        без equipment_id. Названия чек-листа не должны дублироваться внутри одного шаблона после нормализации пробелов.
-        Для CATEGORY генерируются расписания по каждой текущей неархивированной единице.
+      description: "Только ENGINEER. Scope EQUIPMENT требует equipment_id без category; CATEGORY требует category без equipment_id. Названия чек-листа не должны дублироваться внутри одного шаблона после нормализации пробелов. Для CATEGORY генерируются расписания по каждой текущей неархивированной единице.\n\nАктуальные напоминания формируются для затронутых графиков в той же транзакции, без ожидания worker tick. Ошибка откатывает всю операцию; повторная генерация не создаёт дублей."
       requestBody:
         required: true
         description: JSON-тело запроса. Неописанные поля запрещены.
@@ -6984,18 +6961,7 @@ paths:
       - Регламенты ТО
       operationId: updateMaintenancePlan
       summary: Изменить регламент ТО
-      description: 'Только ENGINEER. Изменение scope запрещено. Новый чек-лист применяется только к будущим нарядам,
-        у активных остаётся snapshot. Изменение interval_days запрещено, если есть незакрытые PLANNED заявки для
-        данного регламента. Обязателен If-Match. Сначала аутентификация, роль и видимость, затем проверка валидного
-        тела/заголовка и версии (412/428), затем бизнес-правила. Успешное фактическое изменение атомарно увеличивает
-        version и возвращает ETag; PATCH с текущими значениями возвращает 200 без увеличения version и без события.
-        При смене interval_days запрет действует на все незавершённые PLANNED данного регламента, включая COMPLETED;
-        CLOSED/CANCELLED не блокируют. Для всех его графиков, включая неактивные: если last_completed_on=null, сохранить
-        текущий next_due_on; иначе next_due_on=last_completed_on+новый интервал. Если новый срок не позже последнего
-        CLOSED planned_due_on данного графика — 409 NON_ADVANCING_DUE_DATE. Изменение регламента и всех дат атомарно:
-        при одном конфликте полный откат. enabled=false приостанавливает графики и новые наряды/напоминания, но
-        активные наряды можно закончить. При enabled=true подходящие графики возобновляются с сохранёнными датами.
-        Существующие уведомления неизменяемы. Новый checklist действует только для новых нарядов.'
+      description: "Только ENGINEER. Изменение scope запрещено. Новый чек-лист применяется только к будущим нарядам, у активных остаётся snapshot. Изменение interval_days запрещено, если есть незакрытые PLANNED заявки для данного регламента. Обязателен If-Match. Сначала аутентификация, роль и видимость, затем проверка валидного тела/заголовка и версии (412/428), затем бизнес-правила. Успешное фактическое изменение атомарно увеличивает version и возвращает ETag; PATCH с текущими значениями возвращает 200 без увеличения version и без события. При смене interval_days запрет действует на все незавершённые PLANNED данного регламента, включая COMPLETED; CLOSED/CANCELLED не блокируют. Для всех его графиков, включая неактивные: если last_completed_on=null, сохранить текущий next_due_on; иначе next_due_on=last_completed_on+новый интервал. Если новый срок не позже последнего CLOSED planned_due_on данного графика — 409 NON_ADVANCING_DUE_DATE. Изменение регламента и всех дат атомарно: при одном конфликте полный откат. enabled=false приостанавливает графики и новые наряды/напоминания, но активные наряды можно закончить. При enabled=true подходящие графики возобновляются с сохранёнными датами. Существующие уведомления неизменяемы. Новый checklist действует только для новых нарядов.\n\nАктуальные напоминания формируются для затронутых графиков в той же транзакции, без ожидания worker tick. Ошибка откатывает всю операцию; повторная генерация не создаёт дублей."
       parameters:
       - name: plan_id
         in: path
@@ -9889,8 +9855,7 @@ paths:
       - Заявки
       operationId: assignWorkOrder
       summary: Назначить исполнителя
-      description: 'Только ENGINEER, только статус CREATED. Исполнитель должен быть ACTIVE TECHNICIAN. Повторное
-        назначение ASSIGNED не идемпотентно: 409. Изменение assignee_id — отдельное действие с переходом состояния.'
+      description: "Только ENGINEER, только статус CREATED. Исполнитель должен быть ACTIVE TECHNICIAN. Повторное назначение ASSIGNED не идемпотентно: 409. Изменение assignee_id — отдельное действие с переходом состояния.\n\nАктуальные напоминания формируются для затронутых графиков в той же транзакции, без ожидания worker tick. Ошибка откатывает всю операцию; повторная генерация не создаёт дублей."
       parameters:
       - name: work_order_id
         in: path
@@ -10337,10 +10302,7 @@ paths:
       - Заявки
       operationId: reassignWorkOrder
       summary: Переназначить уже распределённую заявку
-      description: ENGINEER может заменить техника при ASSIGNED или IN_PROGRESS, не изменяя статуса. Допускается
-        переназначение, если прежний техник заблокирован/недоступен. Замена записывается в аудит переходов. Ранее
-        отмеченные пункты checklist сохраняются, новый техник видит их и может перепроверить. Исполнитель должен
-        быть активным TECHNICIAN. Повторный выбор того же assignee_id -> 409.
+      description: "ENGINEER может заменить техника при ASSIGNED или IN_PROGRESS, не изменяя статуса. Допускается переназначение, если прежний техник заблокирован/недоступен. Замена записывается в аудит переходов. Ранее отмеченные пункты checklist сохраняются, новый техник видит их и может перепроверить. Исполнитель должен быть активным TECHNICIAN. Повторный выбор того же assignee_id -> 409.\n\nАктуальные напоминания формируются для затронутых графиков в той же транзакции, без ожидания worker tick. Ошибка откатывает всю операцию; повторная генерация не создаёт дублей."
       parameters:
       - name: work_order_id
         in: path
@@ -12157,13 +12119,7 @@ paths:
       - Заявки
       operationId: closeWorkOrder
       summary: Принять и закрыть заявку
-      description: 'Только ENGINEER, только COMPLETED. Атомарно формирует неизменяемую историю, связывает ремонт
-        с RESOLVED неисправностью, а для PLANNED обновляет schedule: last_completed_on=UTC completed_at по TZ предприятия,
-        next_due_on=last_completed_on+interval_days. Повторное закрытие → 409.
-
-
-        Тело запроса отсутствует; отправка лишних полей не допускается. Непустое тело запроса, включая JSON {},
-        запрещено: 422 VALIDATION_ERROR.'
+      description: "Только ENGINEER, только COMPLETED. Атомарно формирует неизменяемую историю, связывает ремонт с RESOLVED неисправностью, а для PLANNED обновляет schedule: last_completed_on=UTC completed_at по TZ предприятия, next_due_on=last_completed_on+interval_days. Повторное закрытие → 409.\n\nТело запроса отсутствует; отправка лишних полей не допускается. Непустое тело запроса, включая JSON {}, запрещено: 422 VALIDATION_ERROR.\n\nАктуальные напоминания формируются для затронутых графиков в той же транзакции, без ожидания worker tick. Ошибка откатывает всю операцию; повторная генерация не создаёт дублей."
       parameters:
       - name: work_order_id
         in: path
@@ -14407,6 +14363,547 @@ paths:
       - ENGINEER
       x-object-visibility:
         ENGINEER: ALL
+  /users/directory:
+    get:
+      tags:
+      - Пользователи
+      operationId: listUserDirectory
+      summary: Справочник сотрудников для выбора исполнителя
+      description: ADMIN и ENGINEER читают справочник без административных полей; фильтры role/status/q, пагинация
+        и порядок login ASC,id ASC. Для назначения role=TECHNICIAN&status=ACTIVE. Для истории можно читать заблокированных
+        и бывших техников. Управление пользователями остаётся только у ADMIN.
+      parameters:
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 20
+        description: Размер страницы.
+      - name: offset
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 0
+          default: 0
+        description: Пропустить N записей; стабильный порядок определяется сортировкой.
+      - name: q
+        in: query
+        required: false
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 64
+        description: Подстрока логина.
+      - name: role
+        in: query
+        required: false
+        schema:
+          type: string
+          enum:
+          - ADMIN
+          - ENGINEER
+          - TECHNICIAN
+          - OPERATOR
+        description: Фильтр роли.
+      - name: status
+        in: query
+        required: false
+        schema:
+          type: string
+          enum:
+          - ACTIVE
+          - BLOCKED
+        description: Фильтр состояния.
+      responses:
+        '200':
+          description: Краткие сведения без административных полей
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserSummaryPage'
+              examples:
+                успех:
+                  summary: Доступный справочник
+                  value:
+                    items:
+                    - &id001
+                      id: 33333333-3333-4333-8333-333333333333
+                      login: tech.ivanov
+                      role: TECHNICIAN
+                      status: ACTIVE
+                    total: 1
+                    limit: 20
+                    offset: 0
+        '401':
+          description: Требуется аутентификация
+          content:
+            application/problem+json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/ProblemDetail'
+                - properties:
+                    status:
+                      const: 401
+                    code:
+                      enum:
+                      - TOKEN_EXPIRED
+                      - UNAUTHENTICATED
+              examples:
+                typical:
+                  summary: '401: основной случай'
+                  value:
+                    type: https://mini-cmms.example/problems/unauthenticated
+                    title: Требуется аутентификация
+                    status: 401
+                    detail: Отсутствует или недействителен токен доступа.
+                    code: UNAUTHENTICATED
+                    instance: /api/v1/users
+                expired:
+                  summary: '401: токен истёк'
+                  value:
+                    type: https://mini-cmms.example/problems/token-expired
+                    title: Требуется аутентификация
+                    status: 401
+                    detail: Срок действия токена истёк.
+                    code: TOKEN_EXPIRED
+                    instance: /api/v1/users
+          headers:
+            WWW-Authenticate:
+              description: Схема аутентификации для защищённого API
+              schema:
+                type: string
+                const: Bearer
+              example: Bearer
+        '403':
+          description: Недостаточно прав
+          content:
+            application/problem+json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/ProblemDetail'
+                - properties:
+                    status:
+                      const: 403
+                    code:
+                      enum:
+                      - ACCESS_DENIED
+              examples:
+                typical:
+                  summary: '403: основной случай'
+                  value:
+                    type: https://mini-cmms.example/problems/access-denied
+                    title: Недостаточно прав
+                    status: 403
+                    detail: Текущая роль не разрешает эту операцию.
+                    code: ACCESS_DENIED
+                    instance: /api/v1/users
+                wrong_role:
+                  summary: '403: запрещённая роль'
+                  value:
+                    type: https://mini-cmms.example/problems/access-denied
+                    title: Недостаточно прав
+                    status: 403
+                    detail: Для выполнения операции требуется другая роль.
+                    code: ACCESS_DENIED
+                    instance: /api/v1/users
+        '422':
+          description: Ошибка валидации
+          content:
+            application/problem+json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/ProblemDetail'
+                - properties:
+                    status:
+                      const: 422
+                    code:
+                      enum:
+                      - VALIDATION_ERROR
+              examples:
+                typical:
+                  summary: '422: основной случай'
+                  value:
+                    type: https://mini-cmms.example/problems/validation-error
+                    title: Ошибка валидации
+                    status: 422
+                    detail: Проверьте значения и взаимосвязи полей.
+                    code: VALIDATION_ERROR
+                    instance: /api/v1/users
+                field_error:
+                  summary: '422: ошибка поля'
+                  value:
+                    type: https://mini-cmms.example/problems/validation-error
+                    title: Ошибка валидации
+                    status: 422
+                    detail: Периодичность должна быть положительной.
+                    code: VALIDATION_ERROR
+                    instance: /api/v1/users
+                    errors:
+                    - field: interval_days
+                      message: Периодичность должна быть положительной.
+        '503':
+          description: Сервис временно недоступен
+          content:
+            application/problem+json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/ProblemDetail'
+                - properties:
+                    status:
+                      const: 503
+                    code:
+                      enum:
+                      - DEPENDENCY_UNAVAILABLE
+              examples:
+                typical:
+                  summary: '503: основной случай'
+                  value:
+                    type: https://mini-cmms.example/problems/dependency-unavailable
+                    title: Сервис временно недоступен
+                    status: 503
+                    detail: База данных или другой обязательный компонент недоступен.
+                    code: DEPENDENCY_UNAVAILABLE
+                    instance: /api/v1/users
+                db:
+                  summary: '503: БД недоступна'
+                  value:
+                    type: https://mini-cmms.example/problems/dependency-unavailable
+                    title: Сервис временно недоступен
+                    status: 503
+                    detail: Соединение с PostgreSQL недоступно.
+                    code: DEPENDENCY_UNAVAILABLE
+                    instance: /api/v1/users
+      x-functional-requirements:
+      - ФТ-02
+      - ФТ-03
+      x-corner-cases:
+      - id: listUserDirectory.C01
+        case: Фильтр двух условий
+        request_or_state: role=TECHNICIAN&status=ACTIVE
+        expected_http_status: 200
+        expected_error_code: null
+        expected_effect: Пересечение двух фильтров
+      - id: listUserDirectory.C02
+        case: Скрыть хеш
+        request_or_state: Получение пользователя администратором
+        expected_http_status: 200
+        expected_error_code: null
+        expected_effect: Ни пароль, ни password_hash не присутствуют
+      - id: listUserDirectory.C03
+        case: Ограничение страницы
+        request_or_state: limit=101
+        expected_http_status: 422
+        expected_error_code: VALIDATION_ERROR
+        expected_effect: Не делать неконтролируемую выдачу
+      - id: listUserDirectory.A01
+        case: Нет или истёк bearer token
+        request_or_state: Authorization header отсутствует или token просрочен
+        expected_http_status: 401
+        expected_error_code: UNAUTHENTICATED
+        expected_effect: Операция не выполняется
+      - id: listUserDirectory.A02
+        case: Запрещённая роль
+        request_or_state: TECHNICIAN или OPERATOR
+        expected_http_status: 403
+        expected_error_code: ACCESS_DENIED
+        expected_effect: База данных не меняется
+      - id: listUserDirectory.P01
+        case: Успешный запрос
+        request_or_state: Изолированная фикстура из Mini_CMMS_API_Examples.yaml; текущая допустимая роль; первый положительный
+          пример operation.requestBody (если есть); валидные path/query; текущий If-Match для PATCH; допустимое состояние
+          ресурса
+        expected_http_status: 200
+        expected_error_code: null
+        expected_effect: 'Ответ соответствует объявленной схеме и положительному примеру; 201: Location указывает
+          на возвращённый id; 204: пустое тело; изменение атомарно и доступно повторным GET; права и побочные эффекты
+          по Design Notes'
+      - id: listUserDirectory.C10
+        case: Поля краткого профиля
+        request_or_state: Допустимая текущая роль
+        expected_http_status: 200
+        expected_error_code: null
+        expected_effect: Только id/login/role/status; нет version, временных меток, password_hash и права менять пользователей
+      x-allowed-roles:
+      - ADMIN
+      - ENGINEER
+      x-object-visibility:
+        ADMIN: ALL
+        ENGINEER: ALL
+  /users/{user_id}/summary:
+    get:
+      tags:
+      - Пользователи
+      operationId: getUserSummary
+      summary: Краткий профиль участника работ
+      description: 'ADMIN/ENGINEER читают любой краткий профиль. TECHNICIAN/OPERATOR читают свой профиль и участников
+        доступных им заявок и событий. TECHNICIAN также видит автора связанной неисправности. После потери назначения
+        связанный доступ исчезает. Чужой или отсутствующий пользователь: 404. Возвращаются только id/login/role/status.'
+      parameters:
+      - name: user_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: UUID объекта (user_id).
+      responses:
+        '200':
+          description: Краткие сведения без административных полей
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserSummary'
+              examples:
+                успех:
+                  summary: Чтение краткого профиля
+                  value: *id001
+        '401':
+          description: Требуется аутентификация
+          content:
+            application/problem+json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/ProblemDetail'
+                - properties:
+                    status:
+                      const: 401
+                    code:
+                      enum:
+                      - TOKEN_EXPIRED
+                      - UNAUTHENTICATED
+              examples:
+                typical:
+                  summary: '401: основной случай'
+                  value:
+                    type: https://mini-cmms.example/problems/unauthenticated
+                    title: Требуется аутентификация
+                    status: 401
+                    detail: Отсутствует или недействителен токен доступа.
+                    code: UNAUTHENTICATED
+                    instance: /api/v1/users/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa
+                expired:
+                  summary: '401: токен истёк'
+                  value:
+                    type: https://mini-cmms.example/problems/token-expired
+                    title: Требуется аутентификация
+                    status: 401
+                    detail: Срок действия токена истёк.
+                    code: TOKEN_EXPIRED
+                    instance: /api/v1/users/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa
+          headers:
+            WWW-Authenticate:
+              description: Схема аутентификации для защищённого API
+              schema:
+                type: string
+                const: Bearer
+              example: Bearer
+        '403':
+          description: Недостаточно прав
+          content:
+            application/problem+json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/ProblemDetail'
+                - properties:
+                    status:
+                      const: 403
+                    code:
+                      enum:
+                      - ACCESS_DENIED
+              examples:
+                typical:
+                  summary: '403: основной случай'
+                  value:
+                    type: https://mini-cmms.example/problems/access-denied
+                    title: Недостаточно прав
+                    status: 403
+                    detail: Текущая роль не разрешает эту операцию.
+                    code: ACCESS_DENIED
+                    instance: /api/v1/users/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa
+                wrong_role:
+                  summary: '403: запрещённая роль'
+                  value:
+                    type: https://mini-cmms.example/problems/access-denied
+                    title: Недостаточно прав
+                    status: 403
+                    detail: Для выполнения операции требуется другая роль.
+                    code: ACCESS_DENIED
+                    instance: /api/v1/users/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa
+        '404':
+          description: Ресурс не найден
+          content:
+            application/problem+json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/ProblemDetail'
+                - properties:
+                    status:
+                      const: 404
+                    code:
+                      enum:
+                      - NOT_FOUND
+              examples:
+                typical:
+                  summary: '404: основной случай'
+                  value:
+                    type: https://mini-cmms.example/problems/not-found
+                    title: Ресурс не найден
+                    status: 404
+                    detail: Ресурс не существует или недоступен пользователю.
+                    code: NOT_FOUND
+                    instance: /api/v1/users/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa
+                hidden:
+                  summary: '404: объект скрыт правами'
+                  value:
+                    type: https://mini-cmms.example/problems/not-found
+                    title: Ресурс не найден
+                    status: 404
+                    detail: Ресурс не существует или недоступен пользователю.
+                    code: NOT_FOUND
+                    instance: /api/v1/users/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa
+        '422':
+          description: Ошибка валидации
+          content:
+            application/problem+json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/ProblemDetail'
+                - properties:
+                    status:
+                      const: 422
+                    code:
+                      enum:
+                      - VALIDATION_ERROR
+              examples:
+                typical:
+                  summary: '422: основной случай'
+                  value:
+                    type: https://mini-cmms.example/problems/validation-error
+                    title: Ошибка валидации
+                    status: 422
+                    detail: Проверьте значения и взаимосвязи полей.
+                    code: VALIDATION_ERROR
+                    instance: /api/v1/users/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa
+                field_error:
+                  summary: '422: ошибка поля'
+                  value:
+                    type: https://mini-cmms.example/problems/validation-error
+                    title: Ошибка валидации
+                    status: 422
+                    detail: Периодичность должна быть положительной.
+                    code: VALIDATION_ERROR
+                    instance: /api/v1/users/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa
+                    errors:
+                    - field: interval_days
+                      message: Периодичность должна быть положительной.
+        '503':
+          description: Сервис временно недоступен
+          content:
+            application/problem+json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/ProblemDetail'
+                - properties:
+                    status:
+                      const: 503
+                    code:
+                      enum:
+                      - DEPENDENCY_UNAVAILABLE
+              examples:
+                typical:
+                  summary: '503: основной случай'
+                  value:
+                    type: https://mini-cmms.example/problems/dependency-unavailable
+                    title: Сервис временно недоступен
+                    status: 503
+                    detail: База данных или другой обязательный компонент недоступен.
+                    code: DEPENDENCY_UNAVAILABLE
+                    instance: /api/v1/users/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa
+                db:
+                  summary: '503: БД недоступна'
+                  value:
+                    type: https://mini-cmms.example/problems/dependency-unavailable
+                    title: Сервис временно недоступен
+                    status: 503
+                    detail: Соединение с PostgreSQL недоступно.
+                    code: DEPENDENCY_UNAVAILABLE
+                    instance: /api/v1/users/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa
+      x-functional-requirements:
+      - ФТ-02
+      - ФТ-03
+      x-corner-cases:
+      - id: getUserSummary.C01
+        case: Не найден
+        request_or_state: Синтаксически корректный, несуществующий UUID
+        expected_http_status: 404
+        expected_error_code: NOT_FOUND
+        expected_effect: Не раскрывать сведения
+      - id: getUserSummary.C02
+        case: Изменённый статус
+        request_or_state: Пользователь заблокирован
+        expected_http_status: 200
+        expected_error_code: null
+        expected_effect: В карточке status=BLOCKED
+      - id: getUserSummary.A01
+        case: Нет или истёк bearer token
+        request_or_state: Authorization header отсутствует или token просрочен
+        expected_http_status: 401
+        expected_error_code: UNAUTHENTICATED
+        expected_effect: Операция не выполняется
+      - id: getUserSummary.A02
+        case: Посторонний пользователь
+        request_or_state: TECHNICIAN/OPERATOR без общей доступной заявки
+        expected_http_status: 404
+        expected_error_code: NOT_FOUND
+        expected_effect: Профиль не раскрывается
+      - id: getUserSummary.A03
+        case: Невалидный UUID в пути
+        request_or_state: Значение идентификатора = not-an-uuid
+        expected_http_status: 422
+        expected_error_code: VALIDATION_ERROR
+        expected_effect: Запрос отклонён на уровне валидации
+      - id: getUserSummary.A04
+        case: Объект не найден
+        request_or_state: Валидный, но отсутствующий UUID (или запрещённый к просмотру объект)
+        expected_http_status: 404
+        expected_error_code: NOT_FOUND
+        expected_effect: Не раскрывает чужие ресурсы
+      - id: getUserSummary.P01
+        case: Успешный запрос
+        request_or_state: Изолированная фикстура из Mini_CMMS_API_Examples.yaml; текущая допустимая роль; первый положительный
+          пример operation.requestBody (если есть); валидные path/query; текущий If-Match для PATCH; допустимое состояние
+          ресурса
+        expected_http_status: 200
+        expected_error_code: null
+        expected_effect: 'Ответ соответствует объявленной схеме и положительному примеру; 201: Location указывает
+          на возвращённый id; 204: пустое тело; изменение атомарно и доступно повторным GET; права и побочные эффекты
+          по Design Notes'
+      - id: getUserSummary.C10
+        case: Поля краткого профиля
+        request_or_state: Допустимая текущая роль
+        expected_http_status: 200
+        expected_error_code: null
+        expected_effect: Только id/login/role/status; нет version, временных меток, password_hash и права менять пользователей
+      - id: getUserSummary.C11
+        case: Потеря назначения
+        request_or_state: Прежний техник после reassign, других общих работ нет
+        expected_http_status: 404
+        expected_error_code: NOT_FOUND
+        expected_effect: Связанный профиль скрыт, информация не меняется
+      x-allowed-roles:
+      - ADMIN
+      - ENGINEER
+      - TECHNICIAN
+      - OPERATOR
+      x-object-visibility:
+        ADMIN: ALL
+        ENGINEER: ALL
+        TECHNICIAN: RELATED_PERSON
+        OPERATOR: RELATED_PERSON
 components:
   securitySchemes:
     BearerAuth:
@@ -14415,6 +14912,59 @@ components:
       bearerFormat: opaque
       description: Opaque access token из /auth/login. Срок 12 ч, хеш токена хранится сервером; revocation по logout/блокировке.
   schemas:
+    UserSummary:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        login:
+          type: string
+          minLength: 3
+          maxLength: 64
+          pattern: ^[A-Za-z0-9_.-]+$
+        role:
+          type: string
+          enum:
+          - ADMIN
+          - ENGINEER
+          - TECHNICIAN
+          - OPERATOR
+        status:
+          type: string
+          enum:
+          - ACTIVE
+          - BLOCKED
+      required:
+      - id
+      - login
+      - role
+      - status
+    UserSummaryPage:
+      type: object
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/UserSummary'
+          minItems: 0
+        total:
+          type: integer
+          minimum: 0
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 100
+        offset:
+          type: integer
+          minimum: 0
+      required:
+      - items
+      - total
+      - limit
+      - offset
     User:
       type: object
       additionalProperties: false
@@ -15662,7 +16212,7 @@ components:
           anyOf:
           - type: string
             minLength: 0
-            maxLength: 1000
+            maxLength: 4000
           - type: 'null'
       required:
       - id
@@ -16182,3 +16732,5 @@ x-visibility-rules:
   PERFORMER: work_history.technician_id == current_user.id.
   AUTHOR_HISTORY: История связана с заявкой, у которой author_id == current_user.id.
   RECIPIENT: notification.recipient_id == current_user.id.
+
+  RELATED_PERSON: "Свой профиль либо участник доступной заявки или её событий; для техника также автор связанной неисправности. После потери назначения доступ прекращается."

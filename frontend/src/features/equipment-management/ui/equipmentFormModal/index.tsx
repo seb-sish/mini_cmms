@@ -1,5 +1,8 @@
 "use client";
 
+import { notificationKeys } from "@entities/notification";
+import { maintenanceScheduleKeys } from "@entities/maintenance-schedule";
+
 import Select from "@shared/ui/select";
 import TextField from "@shared/ui/textField";
 import FormModal from "@shared/ui/formModal";
@@ -72,6 +75,8 @@ const EquipmentFormModal = ({
         equipmentKeys.detail(savedEquipment.id),
         savedEquipment
       );
+      queryClient.invalidateQueries({ queryKey: notificationKeys.all });
+      queryClient.invalidateQueries({ queryKey: maintenanceScheduleKeys.all });
       queryClient.invalidateQueries({ queryKey: equipmentKeys.lists() });
       queryClient.invalidateQueries({ queryKey: equipmentKeys.dictionaries() });
       showFlag({

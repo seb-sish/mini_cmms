@@ -2,10 +2,9 @@
 
 import Icon from "@shared/ui/icon";
 import Avatar from "@shared/ui/avatar";
-import { useTechniciansQuery } from "../../api/userQueries";
+import { useUserSummaryQuery } from "../../api/userQueries";
 import { useViewer } from "../../model/viewerContext";
 import { shortenId } from "@shared/lib/options";
-import { UserRole } from "../../model/types";
 import { IconName } from "@shared/ui/icon";
 import { IconSize } from "@shared/ui/icon";
 import { ReactElement } from "react";
@@ -23,17 +22,14 @@ const UserName = ({
   emptyLabel = DEFAULT_EMPTY_LABEL,
 }: IUserNameProps): ReactElement => {
   const viewer = useViewer();
-  const { data: technicians } = useTechniciansQuery(
-    viewer.role === UserRole.ENGINEER
-  );
+  const { data: person } = useUserSummaryQuery(userId, userId !== viewer.id);
 
   if (!userId) return <span className="text-subtlest">{emptyLabel}</span>;
 
   const knownLogin: string | undefined =
     userId === viewer.id
       ? viewer.login
-      : technicians?.items.find((technician) => technician.id === userId)
-          ?.login;
+      : person?.login;
 
   const displayName: string = knownLogin ?? `Пользователь ${shortenId(userId)}`;
 

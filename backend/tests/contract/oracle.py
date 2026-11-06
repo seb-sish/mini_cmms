@@ -99,6 +99,10 @@ class ContractOracle:
         """Возвращает шаблон пути и описание операции для фактического запроса."""
         relative = path[len(self._prefix) :] if self._prefix and path.startswith(self._prefix) else path
         relative = relative or "/"
+        if relative in self._paths:
+            operation = self._paths[relative].get(method.lower())
+            if operation is not None:
+                return relative, operation
         for pattern, template in self._templates:
             if not pattern.match(relative):
                 continue

@@ -5,7 +5,7 @@ import { keepPreviousData } from "@tanstack/react-query";
 import { fetchNotifications } from "./notificationApi";
 import { useQuery } from "@tanstack/react-query";
 
-const NOTIFICATIONS_REFRESH_MS = 5 * 60_000;
+const NOTIFICATIONS_REFRESH_MS = 30_000;
 
 export const notificationKeys = {
   all: ["notifications"] as const,

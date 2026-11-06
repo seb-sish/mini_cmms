@@ -24,7 +24,7 @@ import { IDataTableColumn } from "@shared/ui/dataTable";
 import { WORK_ORDER_TYPES } from "@entities/work-order";
 import { WorkOrderStatus } from "@entities/work-order";
 import { buildWorkOrderRoute } from "@shared/config";
-import { useTechniciansQuery } from "@entities/user";
+import { useUserDirectoryQuery } from "@entities/user";
 import { WorkOrderSort } from "@entities/work-order";
 import { WorkOrderType } from "@entities/work-order";
 import { EquipmentName } from "@entities/equipment";
@@ -91,7 +91,7 @@ const WorkOrderTable = ({
   const viewer = useViewer();
   const list = useListParams(INITIAL_FILTERS, pageSize);
   const isEngineer: boolean = viewer.role === UserRole.ENGINEER;
-  const { data: technicians } = useTechniciansQuery(isEngineer && isFilterable);
+  const { data: technicians } = useUserDirectoryQuery(isEngineer && isFilterable);
 
   const { data, isFetching, error } = useWorkOrdersQuery({
     limit: list.limit,
@@ -105,7 +105,7 @@ const WorkOrderTable = ({
     ...fixedFilters,
   });
 
-  const technicianOptions = (technicians?.items ?? []).map((technician) => ({
+  const technicianOptions = (technicians ?? []).map((technician) => ({
     value: technician.id,
     label: technician.login,
   }));

@@ -9,7 +9,7 @@ from app.api.dependencies import get_redis, parse_if_match_version, require_role
 from app.db.models.user import User, UserRole, UserStatus
 from app.db.session import get_session
 from app.schemas.common import PaginatedResponse
-from app.schemas.user import UserCreate, UserPatch, UserRead
+from app.schemas.user import UserCreate, UserPatch, UserRead, UserSummary, UserSummaryPage
 from app.services.auth_service import AuthService
 from app.services.user_service import UserService
 
@@ -48,6 +48,29 @@ async def create_user(
     response.headers["ETag"] = f'"{user.id}:{user.version}"'
     response.headers["Location"] = f"/api/v1/users/{user.id}"
     return UserRead.model_validate(user)
+
+
+@users_router.get("/directory", response_model=UserSummaryPage)
+async def list_user_directory(
+    db: Annotated[AsyncSession, Depends(get_session)],
+    viewer: Annotated[User, Depends(require_role("ADMIN", "ENGINEER"))],
+    role: UserRole | None = None,
+    status: UserStatus | None = None,
+    q: str | None = Query(default=None, min_length=1, max_length=64),
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+) -> UserSummaryPage:
+    people, total = await UserService(db).list_users(role=role, status=status, q=q, limit=limit, offset=offset)
+    return UserSummaryPage(items=[UserSummary.model_validate(person) for person in people], total=total, limit=limit, offset=offset)
+
+
+@users_router.get("/{user_id}/summary", response_model=UserSummary)
+async def get_user_summary(
+    user_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_session)],
+    viewer: Annotated[User, Depends(require_role("ADMIN", "ENGINEER", "TECHNICIAN", "OPERATOR"))],
+) -> UserSummary:
+    return UserSummary.model_validate(await UserService(db).get_user_summary(user_id, viewer))
 
 
 @users_router.get("/{user_id}", response_model=UserRead)

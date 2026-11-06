@@ -1,5 +1,7 @@
 "use client";
 
+import { notificationKeys } from "@entities/notification";
+
 import ConfirmModal from "@shared/ui/confirmModal";
 import { maintenanceScheduleKeys } from "@entities/maintenance-schedule";
 import { updateMaintenancePlan } from "@entities/maintenance-plan";
@@ -35,6 +37,7 @@ const TogglePlanModal = ({
         maintenancePlanKeys.detail(savedPlan.id),
         savedPlan
       );
+      queryClient.invalidateQueries({ queryKey: notificationKeys.all });
       queryClient.invalidateQueries({ queryKey: maintenancePlanKeys.lists() });
       queryClient.invalidateQueries({ queryKey: maintenanceScheduleKeys.all });
       showFlag({

@@ -121,8 +121,9 @@ async def test_maintenance_plan_and_schedule_contract_fields(async_client: Async
 
 @pytest.mark.asyncio
 async def test_q16_invariants_active_work_order_and_non_advancing_due_date(
-    async_client: AsyncClient, db_session: AsyncSession, users_setup, sample_press
+    async_client: AsyncClient, db_session: AsyncSession, users_setup, sample_press, monkeypatch
 ):
+    monkeypatch.setattr("app.services.maintenance_service.get_company_today", lambda: date(2026, 10, 24))
     eng, eng_token = users_setup["engineer"]
     tech, tech_token = users_setup["technician"]
     headers = {"Authorization": f"Bearer {eng_token}"}

@@ -25,7 +25,7 @@ async def shutdown(ctx: dict) -> None:
 
 class WorkerSettings:
     functions = [generate_maintenance_notifications]
-    cron_jobs = [cron(generate_maintenance_notifications, minute=0)]
+    cron_jobs = [cron(generate_maintenance_notifications, minute=set(range(60)))]
     redis_settings = RedisSettings.from_dsn(str(settings.redis.URL))
     on_startup = startup
     on_shutdown = shutdown

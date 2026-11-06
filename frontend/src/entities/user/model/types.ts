@@ -20,6 +20,8 @@ export interface IUser {
   updated_at: string;
 }
 
+export type IUserSummary = Pick<IUser, "id" | "login" | "role" | "status">;
+
 export interface IUserCreatePayload {
   login: string;
   password: string;

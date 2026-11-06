@@ -16,6 +16,19 @@ interface IWorkOrderActivityProps {
   workOrderId: string;
 }
 
+const getEventText = (event: IWorkOrderEvent): string | null => {
+  const details = event.details;
+  if (!details) return null;
+  if (
+    event.event_type !== WorkOrderEventType.COMPLETED &&
+    event.event_type !== WorkOrderEventType.CANCELLED &&
+    /^(Work order (created|updated|started|closed)|Work started|Assigned to .*|Reassigned from .+ to .*|Item .+ checked=(True|False))$/.test(details)
+  ) {
+    return WORK_ORDER_EVENT_LABELS[event.event_type];
+  }
+  return details;
+};
+
 const renderEventDetails = (event: IWorkOrderEvent): ReactNode => {
   if (
     event.event_type === WorkOrderEventType.ASSIGNED ||
@@ -70,6 +83,9 @@ const WorkOrderActivity = ({
               </time>
             </div>
             {renderEventDetails(event)}
+            {getEventText(event) && (
+              <p className="work-order-activity-detail pre-wrap-text">{getEventText(event)}</p>
+            )}
           </li>
         ))}
       </ol>

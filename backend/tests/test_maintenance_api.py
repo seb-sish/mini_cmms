@@ -51,7 +51,8 @@ async def sample_equipment(db_session: AsyncSession) -> Equipment:
 
 
 @pytest.mark.asyncio
-async def test_create_plan_creates_schedules(async_client: AsyncClient, engineer_auth, sample_equipment):
+async def test_create_plan_creates_schedules(async_client: AsyncClient, engineer_auth, sample_equipment, monkeypatch):
+    monkeypatch.setattr("app.services.maintenance_service.get_company_today", lambda: date(2026, 10, 24))
     user, token = engineer_auth
     headers = {"Authorization": f"Bearer {token}"}
 

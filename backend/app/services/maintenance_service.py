@@ -13,6 +13,7 @@ from app.db.models.work_order import WorkOrder, WorkOrderStatus
 from app.errors.exceptions import AppException
 from app.schemas.maintenance import ChecklistItemTemplate, MaintenancePlanCreate, MaintenancePlanUpdate
 from app.services.equipment_service import get_company_today
+from app.services.notification_service import NotificationService
 
 
 def validate_checklist_items(checklist: list[ChecklistItemTemplate]) -> list[dict]:
@@ -231,6 +232,7 @@ class MaintenanceService:
 
     async def generate_schedules_for_new_equipment(self, eq: Equipment) -> None:
         await self.sync_equipment_schedules(eq)
+        await NotificationService.generate(self.session, get_company_today(), equipment_id=eq.id)
         await self.session.commit()
 
     async def create_plan(self, payload: MaintenancePlanCreate) -> MaintenancePlan:
@@ -276,6 +278,7 @@ class MaintenanceService:
             for eq in equipments:
                 await self.sync_equipment_schedules(eq)
 
+        await NotificationService.generate(self.session, get_company_today(), plan_id=plan.id)
         await self.session.commit()
         await self.session.refresh(plan)
         return plan
@@ -417,6 +420,7 @@ class MaintenanceService:
 
         if has_changes:
             plan.version += 1
+            await NotificationService.generate(self.session, get_company_today(), plan_id=plan.id)
             await self.session.commit()
             await self.session.refresh(plan)
 

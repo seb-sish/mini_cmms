@@ -1,7 +1,7 @@
 "use client";
 
 import Select from "@shared/ui/select";
-import TextField from "@shared/ui/textField";
+import Button from "@shared/ui/button";
 import FormModal from "@shared/ui/formModal";
 import SectionMessage from "@shared/ui/sectionMessage";
 import { useWorkOrderMutation } from "../../model/useWorkOrderMutation";
@@ -32,9 +32,11 @@ const AssignWorkOrderModal = ({
     data: technicians,
     isError: isDirectoryUnavailable,
     isLoading,
+    error: directoryError,
+    refetch,
   } = useTechniciansQuery(true);
 
-  const technicianOptions: ISelectOption[] = (technicians?.items ?? [])
+  const technicianOptions: ISelectOption[] = (technicians ?? [])
     .filter((technician) => technician.id !== workOrder.assignee_id)
     .map((technician) => ({ value: technician.id, label: technician.login }));
 
@@ -70,6 +72,9 @@ const AssignWorkOrderModal = ({
       onSubmit={handleSubmit}
       onClose={onClose}
       isSubmitting={assignMutation.isPending}
+      isSubmitDisabled={
+        isLoading || isDirectoryUnavailable || technicianOptions.length === 0
+      }
       errorMessage={
         assignMutation.isError ? getErrorMessage(assignMutation.error) : null
       }
@@ -80,38 +85,26 @@ const AssignWorkOrderModal = ({
           сохранится.
         </p>
       )}
-      {isDirectoryUnavailable ? (
-        <>
-          <SectionMessage
-            appearance={SectionMessageAppearance.WARNING}
-            title="Справочник техников недоступен"
-          >
-            <p>
-              Сервер не предоставляет главному инженеру список сотрудников.
-              Укажите идентификатор техника, полученный у администратора.
-            </p>
-          </SectionMessage>
-          <TextField
-            label="Идентификатор техника (UUID)"
-            value={assigneeId}
-            onChange={updateAssignee}
-            errorMessage={assigneeError}
-            placeholder="00000000-0000-0000-0000-000000000000"
-            isRequired
-          />
-        </>
-      ) : (
-        <Select
-          label="Техник"
-          value={assigneeId}
-          options={technicianOptions}
-          onChange={updateAssignee}
-          placeholder={isLoading ? "Загрузка..." : "Выберите техника"}
-          errorMessage={assigneeError}
-          helperText="Показаны только активные пользователи с ролью техника"
-          isRequired
-        />
+      {isDirectoryUnavailable && (
+        <SectionMessage
+          appearance={SectionMessageAppearance.ERROR}
+          title="Не удалось загрузить справочник техников"
+          actions={<Button label="Повторить" onClick={() => refetch()} />}
+        >
+          <p>{getErrorMessage(directoryError)}</p>
+        </SectionMessage>
       )}
+      <Select
+        label="Техник"
+        value={assigneeId}
+        options={technicianOptions}
+        onChange={updateAssignee}
+        placeholder={isLoading ? "Загрузка..." : "Выберите техника"}
+        errorMessage={assigneeError}
+        helperText="Показаны только активные пользователи с ролью техника"
+        isDisabled={isLoading || isDirectoryUnavailable}
+        isRequired
+      />
     </FormModal>
   );
 };

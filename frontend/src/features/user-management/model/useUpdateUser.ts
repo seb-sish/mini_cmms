@@ -29,7 +29,7 @@ export const useUpdateUser = ({
     mutationFn: (payload: IUserPatchPayload) => updateUser(user, payload),
     onSuccess: (updatedUser) => {
       queryClient.setQueryData(userKeys.detail(updatedUser.id), updatedUser);
-      queryClient.invalidateQueries({ queryKey: userKeys.lists() });
+      queryClient.invalidateQueries({ queryKey: userKeys.all });
       showFlag({ appearance: FlagAppearance.SUCCESS, title: successTitle });
       onSuccess?.();
     },

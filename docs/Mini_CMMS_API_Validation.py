@@ -166,6 +166,9 @@ point = dict(id='11111111-aaaa-4111-8111-111111111111',title='Масло',requir
 check(point, {'$ref': '#/components/schemas/WorkChecklistItem'}, 'unchecked timestamp', False)
 
 examples = load('Mini_CMMS_API_Examples.yaml')
+for entry in examples.get('directory_examples', []):
+    schema_name = 'UserSummary' if entry['path'].endswith('/summary') else 'UserSummaryPage'
+    check(entry['expected_body'], {'$ref': '#/components/schemas/' + schema_name}, entry['path'])
 for flow in examples['flows']:
     clocks = [datetime.fromisoformat(s['clock_utc'].replace('Z', '+00:00')) for s in flow['steps']]
     require(clocks == sorted(clocks), flow['id'] + ': время шагов идёт назад')

@@ -45,7 +45,7 @@ const CreateUserModal = ({
   const createMutation = useMutation({
     mutationFn: createUser,
     onSuccess: (user) => {
-      queryClient.invalidateQueries({ queryKey: userKeys.lists() });
+      queryClient.invalidateQueries({ queryKey: userKeys.all });
       showFlag({
         appearance: FlagAppearance.SUCCESS,
         title: "Пользователь создан",

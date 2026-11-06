@@ -1,5 +1,7 @@
 "use client";
 
+import { notificationKeys } from "@entities/notification";
+
 import Select from "@shared/ui/select";
 import TextField from "@shared/ui/textField";
 import FormModal from "@shared/ui/formModal";
@@ -89,6 +91,7 @@ const PlanFormModal = ({
         maintenancePlanKeys.detail(savedPlan.id),
         savedPlan
       );
+      queryClient.invalidateQueries({ queryKey: notificationKeys.all });
       queryClient.invalidateQueries({ queryKey: maintenancePlanKeys.lists() });
       queryClient.invalidateQueries({ queryKey: maintenanceScheduleKeys.all });
       showFlag({

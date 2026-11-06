@@ -1385,3 +1385,22 @@ date_probes:
   interval_days: 30
   allowed: true
   computed_next_due_on: '2026-12-05'
+
+# Дополнение к примерам: справочник чтения и профили участников.
+directory_examples:
+  - actor: engineer
+    method: GET
+    path: /users/directory
+    query: {role: TECHNICIAN, status: ACTIVE, limit: 20, offset: 0}
+    expected_status: 200
+    expected_body:
+      items:
+        - {id: '33333333-3333-4333-8333-333333333333', login: tech.ivanov, role: TECHNICIAN, status: ACTIVE}
+      total: 1
+      limit: 20
+      offset: 0
+  - actor: engineer
+    method: GET
+    path: /users/33333333-3333-4333-8333-333333333333/summary
+    expected_status: 200
+    expected_body: {id: '33333333-3333-4333-8333-333333333333', login: tech.ivanov, role: TECHNICIAN, status: ACTIVE}

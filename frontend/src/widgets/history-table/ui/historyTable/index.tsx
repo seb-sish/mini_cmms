@@ -15,7 +15,7 @@ import { IWorkHistoryListParams } from "@entities/work-history";
 import { ReplacedPartsList } from "@entities/work-history";
 import { IDataTableColumn } from "@shared/ui/dataTable";
 import { IWorkHistory } from "@entities/work-history";
-import { useTechniciansQuery } from "@entities/user";
+import { useUserDirectoryQuery } from "@entities/user";
 import { EquipmentName } from "@entities/equipment";
 import { buildHistoryRoute } from "@shared/config";
 import { formatDateTime } from "@shared/lib/date";
@@ -56,7 +56,7 @@ const HistoryTable = ({
   const viewer = useViewer();
   const isEngineer: boolean = viewer.role === UserRole.ENGINEER;
   const list = useListParams(INITIAL_FILTERS, pageSize);
-  const { data: technicians } = useTechniciansQuery(isEngineer && isFilterable);
+  const { data: technicians } = useUserDirectoryQuery(isEngineer && isFilterable);
   const isRangeInvalid: boolean = Boolean(
     list.filters.completed_from &&
       list.filters.completed_to &&
@@ -75,7 +75,7 @@ const HistoryTable = ({
     !isRangeInvalid
   );
 
-  const technicianOptions = (technicians?.items ?? []).map((technician) => ({
+  const technicianOptions = (technicians ?? []).map((technician) => ({
     value: technician.id,
     label: technician.login,
   }));
