@@ -1,0 +1,99 @@
+.top-navigation {
+    position: sticky;
+    top: 0;
+    z-index: var(--ds-z-index-navigation);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: var(--ds-top-nav-height);
+    padding: 0 var(--ds-space-200);
+    background-color: var(--ds-secondary);
+    color: var(--ds-secondary-text);
+    box-shadow: 0 1px 0 rgba(0, 0, 0, 0.2);
+}
+
+.top-navigation-brand {
+    display: flex;
+    align-items: center;
+    gap: var(--ds-space-100);
+    color: var(--ds-secondary-text);
+    text-decoration: none;
+}
+
+.top-navigation-brand:hover {
+    text-decoration: none;
+}
+
+.top-navigation-logo {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: var(--ds-border-radius-100);
+    background-color: var(--ds-background-brand-bold);
+    color: var(--ds-text-inverse);
+}
+
+.top-navigation-title {
+    font-size: var(--ds-font-size-heading-medium);
+    font-weight: var(--ds-font-weight-bold);
+    letter-spacing: 0.2px;
+}
+
+.top-navigation-right {
+    display: flex;
+    align-items: center;
+    gap: var(--ds-space-200);
+}
+
+.top-navigation-icon-link {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: var(--ds-border-radius-circle);
+    color: var(--ds-secondary-text-subtle);
+}
+
+.top-navigation-icon-link:hover {
+    background-color: var(--ds-secondary-hovered);
+    color: var(--ds-secondary-text);
+}
+
+.top-navigation-user {
+    display: flex;
+    align-items: center;
+    gap: var(--ds-space-100);
+}
+
+.top-navigation-user-info {
+    display: flex;
+    flex-direction: column;
+    line-height: 1.2;
+}
+
+.top-navigation-user-login {
+    font-weight: var(--ds-font-weight-semibold);
+}
+
+.top-navigation-user-role {
+    color: var(--ds-secondary-text-subtle);
+}
+
+.top-navigation-logout .button.subtle {
+    color: var(--ds-secondary-text-subtle);
+}
+
+.top-navigation-logout .button.subtle:hover {
+    background-color: var(--ds-secondary-hovered);
+    color: var(--ds-secondary-text);
+}
+
+@media (max-width: 700px) {
+    .top-navigation-user-info,
+    .top-navigation-logout .button-label {
+        display: none;
+    }
+}

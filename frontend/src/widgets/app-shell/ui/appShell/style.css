@@ -1,0 +1,30 @@
+.app-shell {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+}
+
+.app-shell-body {
+    display: flex;
+    flex: 1;
+}
+
+.app-shell-content {
+    flex: 1;
+    min-width: 0;
+    padding: var(--ds-space-300) var(--ds-space-400) var(--ds-space-600);
+}
+
+.app-shell-state {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    padding: var(--ds-space-300);
+}
+
+@media (max-width: 700px) {
+    .app-shell-content {
+        padding: var(--ds-space-200);
+    }
+}

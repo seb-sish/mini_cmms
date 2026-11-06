@@ -1,0 +1,26 @@
+.complete-work-order-missing {
+    padding-left: var(--ds-space-250);
+}
+
+.complete-work-order-parts {
+    display: flex;
+    flex-direction: column;
+    gap: var(--ds-space-100);
+}
+
+.complete-work-order-part-input {
+    display: flex;
+    align-items: flex-end;
+    gap: var(--ds-space-100);
+}
+
+.complete-work-order-part-input .form-field {
+    flex: 1;
+}
+
+.complete-work-order-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--ds-space-050);
+    list-style: none;
+}

@@ -1,0 +1,5 @@
+.user-table-login {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--ds-space-100);
+}

@@ -1,0 +1,9 @@
+.work-order-actions-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--ds-space-100);
+}
+
+.work-order-actions-bar:empty {
+    display: none;
+}

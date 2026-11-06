@@ -1,0 +1,50 @@
+.work-order-checklist {
+    display: flex;
+    flex-direction: column;
+    gap: var(--ds-space-150);
+}
+
+.work-order-checklist-list {
+    display: flex;
+    flex-direction: column;
+    list-style: none;
+    border: var(--ds-border-width) solid var(--ds-border);
+    border-radius: var(--ds-border-radius);
+}
+
+.work-order-checklist-item {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--ds-space-050);
+    padding: var(--ds-space-150);
+}
+
+.work-order-checklist-item + .work-order-checklist-item {
+    border-top: var(--ds-border-width) solid var(--ds-border);
+}
+
+.work-order-checklist-comment {
+    margin-left: var(--ds-space-300);
+    padding: var(--ds-space-050) var(--ds-space-100);
+    border-left: 2px solid var(--ds-border-bold);
+    color: var(--ds-text-subtle);
+    white-space: pre-wrap;
+}
+
+.work-order-checklist-item > .button.link {
+    margin-left: var(--ds-space-200);
+}
+
+.work-order-checklist-comment-editor {
+    display: flex;
+    flex-direction: column;
+    gap: var(--ds-space-100);
+    width: 100%;
+    padding-left: var(--ds-space-300);
+}
+
+.work-order-checklist-comment-actions {
+    display: flex;
+    gap: var(--ds-space-100);
+}

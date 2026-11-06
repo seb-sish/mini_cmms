@@ -1,0 +1,6 @@
+.schedule-table-due {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--ds-space-025);
+}

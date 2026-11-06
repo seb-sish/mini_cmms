@@ -1,0 +1,9 @@
+.work-order-details-number {
+    color: var(--ds-text-subtlest);
+    font-size: var(--ds-font-size-heading-medium);
+}
+
+.work-order-details-tracker {
+    max-width: 720px;
+    margin-bottom: var(--ds-space-300);
+}
